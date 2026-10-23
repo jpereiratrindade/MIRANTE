@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "mirante": {
+      "command": "/run/media/jpereiratrindade/labeco10T/dev/cpp/MIRANTE/build/mirante-mcp",
+      "args": [
+        "/run/media/jpereiratrindade/labeco10T/dev/cpp/MIRANTE/mirante.sqlite3"
+      ],
+      "env": {
+        "MIRANTE_DB_PATH": "/run/media/jpereiratrindade/labeco10T/dev/cpp/MIRANTE/mirante.sqlite3"
+      }
+    }
+  }
+}

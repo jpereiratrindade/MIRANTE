@@ -118,10 +118,51 @@ MIRANTE_API_TOKEN="meu-token-seguro" ./build/mirante-server --host 0.0.0.0 --por
 ```
 
 A interface pode ser acessada em qualquer navegador da rede em: `http://localhost:8088` ou `http://<ip-do-servidor>:8088`.
+A documentação interativa Swagger UI está disponível em: `http://localhost:8088/docs`.
 
 ---
 
-## 7. Licença e Autoria
+## 7. Integração com ChatGPT, Claude e Agentes (OpenAPI e MCP)
+
+O MIRANTE disponibiliza duas vias soberanas para interação com modelos de linguagem externos (ChatGPT, Claude, Gemini) e agentes autônomos de pesquisa:
+
+### 7.1. ChatGPT Custom Actions e APIs HTTP (OpenAPI 3.1.0)
+- **Especificação OpenAPI**: `http://localhost:8088/api/openapi.json` (ou no IP de rede `http://<ip-servidor>:8088/api/openapi.json`)
+- **Documentação Interativa (Swagger UI)**: `http://localhost:8088/docs`
+- **Configuração no ChatGPT**:
+  1. No ChatGPT, acesse **My GPTs** -> **Create a GPT** -> **Configure** -> **Actions** -> **Create new action**.
+  2. Clique em **Import from URL** e insira `http://<seu-ip>:8088/api/openapi.json`.
+  3. O ChatGPT importará automaticamente todas as ferramentas do protocolo MPRR (criar sessão, deslocar perspectiva, formular questões, registrar confronto e auditar o ledger).
+
+### 7.2. Model Context Protocol (MCP) Nativo em C++26 (`mirante-mcp`)
+O MIRANTE inclui o executável nativo `./build/mirante-mcp`, que implementa a especificação oficial **JSON-RPC 2.0 stdio** do MCP para comunicação direta com **Claude Desktop**, **Antigravity**, **Cursor** e orquestradores de agentes.
+
+#### Ferramentas Expostas pelo Servidor MCP:
+1. `list_sessions`: Lista todas as sessões registradas com ciclo atual.
+2. `get_session`: Recupera o estado completo da investigação (M1 a C5).
+3. `create_session`: Inicia sessão MPRR escolhendo Caminho A ou B e enquadrando o fenômeno.
+4. `shift_perspective`: Registra deslocamento de perspectiva (M1, INV-07).
+5. `add_candidate_relation`: Adiciona relação candidata na bancada (M2, INV-01).
+6. `formulate_question`: Formula questão científica com via de evidência necessária (M3).
+7. `record_confrontation`: Submete a hipótese a explicações rivais e riscos epistêmicos (C4, INV-02).
+8. `consolidate_reposition`: Consolida decisão de reposicionamento e próximo teste empírico (C5, INV-06, INV-08).
+9. `verify_audit_ledger`: Audita matematicamente a integridade criptográfica da cadeia Merkle SHA-256 (INV-03).
+
+#### Exemplo de Configuração (`claude_desktop_config.json` ou `mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "mirante": {
+      "command": "/caminho/para/MIRANTE/build/mirante-mcp",
+      "args": ["/caminho/para/MIRANTE/mirante.sqlite3"]
+    }
+  }
+}
+```
+
+---
+
+## 8. Licença e Autoria
 
 - **Copyright (C) 2026 José Pedro Trindade / Ecossistema SisTer**
 - Software Científico Livre — Licença GPL v3.0.

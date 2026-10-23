@@ -54,6 +54,15 @@ target_link_libraries(mirante-server PRIVATE
   mirante_core
 )
 
+# Native MCP (Model Context Protocol) Server for AI Integration
+add_executable(mirante-mcp
+  src/mcp/main.cpp
+)
+
+target_link_libraries(mirante-mcp PRIVATE
+  mirante_core
+)
+
 # Testing
 include(CTest)
 if(BUILD_TESTING)

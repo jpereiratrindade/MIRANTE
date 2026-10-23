@@ -1,4 +1,5 @@
 #include "mirante/http/server.hpp"
+#include "mirante/http/openapi.hpp"
 #include <httplib/httplib.h>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -28,7 +29,7 @@ void HttpServer::Start() {
     svr.set_default_headers({
         {"Access-Control-Allow-Origin", "*"},
         {"Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE"},
-        {"Access-Control-Allow-Headers", "Content-Type, Authorization"}
+        {"Access-Control-Allow-Headers", "Content-Type, Authorization, X-Mirante-Token"}
     });
 
     svr.Options(".*", [](const httplib::Request&, httplib::Response& res) {
@@ -44,6 +45,74 @@ void HttpServer::Start() {
             {"ollama_online", ollama_ ? ollama_->IsOnline() : false}
         };
         res.set_content(j.dump(), "application/json");
+    });
+
+    // OpenAPI 3.1.0 Schema (ChatGPT Actions / Claude / Swagger)
+    svr.Get("/api/openapi.json", [this](const httplib::Request&, httplib::Response& res) {
+        std::string server_url = std::format("http://{}:{}", (host_ == "0.0.0.0" ? "127.0.0.1" : host_), port_);
+        res.set_content(GetOpenApiSpec(server_url).dump(2), "application/json");
+    });
+
+    // Swagger UI Interativo
+    auto swagger_handler = [](const httplib::Request&, httplib::Response& res) {
+        res.set_content(GetSwaggerHtml("/api/openapi.json"), "text/html; charset=utf-8");
+    };
+    svr.Get("/docs", swagger_handler);
+    svr.Get("/api/docs", swagger_handler);
+
+    // Catálogo Canônico dos 8 Invariantes Metodológicos (MPRR-INV-001)
+    svr.Get("/api/invariants", [](const httplib::Request&, httplib::Response& res) {
+        json invs = json::array({
+            {
+                {"id", "INV-01"},
+                {"name", "Proibição de Fato Demonstrado Prematuro"},
+                {"description", "Toda relação formulada na Bancada nasce e permanece compulsoriamente como CANDIDATA. A validação empírica ocorre fora do software."},
+                {"jurisdiction", "Integridade Procedimental"}
+            },
+            {
+                {"id", "INV-02"},
+                {"name", "Obrigatoriedade do Contraditório no Reposicionamento"},
+                {"description", "O reposicionamento de uma hipótese exige no mínimo UMA Explicação Rival e no mínimo UM Risco Epistêmico devidamente registrados."},
+                {"jurisdiction", "Integridade Procedimental"}
+            },
+            {
+                {"id", "INV-03"},
+                {"name", "Não-Mutação Arbitrária e Cadeia Criptográfica (Merkle Ledger)"},
+                {"description", "Toda alteração de estado é selada em um evento auditável com hash SHA-256 encadeado e verificação matemática de adulteração."},
+                {"jurisdiction", "Integridade Procedimental"}
+            },
+            {
+                {"id", "INV-04"},
+                {"name", "Transparência Categórica de Proveniência"},
+                {"description", "Todo fragmento conceitual registra seu autor, natureza (Humano, Assistido, Importado) e digest criptográfico do modelo quando assistido."},
+                {"jurisdiction", "Integridade Procedimental"}
+            },
+            {
+                {"id", "INV-05"},
+                {"name", "Autonomia Operacional do Núcleo"},
+                {"description", "O núcleo científico C++26 opera integralmente sem IA. A assistência local é um amplificador heurístico desacoplado, jamais pré-requisito."},
+                {"jurisdiction", "Arquitetura Soberana"}
+            },
+            {
+                {"id", "INV-06"},
+                {"name", "Conservação de Incerteza na Suspensão"},
+                {"description", "Hipóteses suspensas exigem a declaração explícita das condições empíricas ou metodológicas necessárias para sua retomada futura."},
+                {"jurisdiction", "Integridade Metodológica"}
+            },
+            {
+                {"id", "INV-07"},
+                {"name", "Rastreabilidade de Enquadramento no Deslocamento"},
+                {"description", "O Movimento 1 exige formalizar a perspectiva inicial, a perspectiva deslocada e a justificativa metodológica da transição."},
+                {"jurisdiction", "Integridade Metodológica"}
+            },
+            {
+                {"id", "INV-08"},
+                {"name", "Obrigatoriedade de Próximo Passo Epistêmico"},
+                {"description", "O reposicionamento de uma hipótese não encerra a investigação: exige a especificação do próximo teste empírico ou do conhecimento requerido."},
+                {"jurisdiction", "Integridade Metodológica"}
+            }
+        });
+        res.set_content(invs.dump(2), "application/json");
     });
 
     // Modelos Locais Disponíveis
@@ -220,6 +289,41 @@ void HttpServer::Start() {
             {"questions", questions_j},
             {"confrontation", confrontation_j},
             {"confrontation_done", s_exp->confrontation.has_value() && s_exp->confrontation->is_concluded}
+        }).dump(), "application/json");
+    });
+
+    // Auditar Trilha Merkle da Sessão (INV-03)
+    svr.Get(R"(/api/sessions/([\w\-]+)/audit)", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string sid = req.matches[1];
+        auto events_exp = db_->GetEventLedger(sid);
+        if (!events_exp) {
+            res.status = 500;
+            res.set_content(json({{"error", events_exp.error()}}).dump(), "application/json");
+            return;
+        }
+
+        auto verify_exp = db_->VerifyLedgerIntegrity(sid);
+        bool is_valid = verify_exp.has_value() && *verify_exp;
+
+        json ev_list = json::array();
+        for (const auto& ev : *events_exp) {
+            ev_list.push_back({
+                {"sequence", ev.sequence_number},
+                {"event_type", ev.event_type},
+                {"author", ev.author},
+                {"timestamp", ev.timestamp_iso},
+                {"previous_hash", ev.previous_hash},
+                {"current_hash", ev.current_hash},
+                {"payload", json::accept(ev.payload_json) ? json::parse(ev.payload_json) : json(ev.payload_json)}
+            });
+        }
+
+        res.set_content(json({
+            {"session_id", sid},
+            {"is_valid", is_valid},
+            {"events_count", events_exp->size()},
+            {"head_hash", events_exp->empty() ? "" : events_exp->back().current_hash},
+            {"events", ev_list}
         }).dump(), "application/json");
     });
 

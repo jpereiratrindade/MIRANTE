@@ -670,6 +670,43 @@ std::expected<std::vector<domain::SessionAggregate>, std::string> Database::List
     return list;
 }
 
+std::expected<std::vector<domain::SessionEvent>, std::string> Database::GetEventLedger(const std::string& session_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    const char* sql = R"(
+        SELECT event_id, sequence_number, previous_hash, event_type, payload_json, author, timestamp_iso, current_hash
+        FROM mprr_session_events
+        WHERE session_id = ?
+        ORDER BY sequence_number ASC;
+    )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+
+    sqlite3_bind_text(stmt, 1, session_id.c_str(), -1, SQLITE_STATIC);
+    std::vector<domain::SessionEvent> events;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        events.push_back(domain::SessionEvent{
+            .event_id = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
+            .session_id = session_id,
+            .sequence_number = static_cast<uint64_t>(sqlite3_column_int64(stmt, 1)),
+            .previous_hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)),
+            .event_type = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)),
+            .payload_json = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)),
+            .author = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)),
+            .timestamp_iso = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6)),
+            .current_hash = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 7))
+        });
+    }
+
+    sqlite3_finalize(stmt);
+    return events;
+}
+
 std::expected<bool, std::string> Database::VerifyLedgerIntegrity(const std::string& session_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!db_) return std::unexpected("Banco de dados não aberto");
