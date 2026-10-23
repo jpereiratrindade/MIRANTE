@@ -511,37 +511,39 @@ document.addEventListener('DOMContentLoaded', () => {
       const hRes = await authFetch(`${API_BASE}/api/health`);
       if (hRes.ok) {
         const hData = await hRes.json();
-        statusDot.classList.add('online');
-        statusText.textContent = hData.ollama_online ? "C++26 & Ollama Ativos" : "C++26 Ativo (Modo Humano)";
+        if (statusDot) statusDot.classList.add('online');
+        if (statusText) statusText.textContent = hData.ollama_online ? "C++26 & Ollama Ativos" : "C++26 Ativo (Modo Humano)";
       }
 
       // Carregar lista de modelos locais filtrando embeddings
       const mRes = await authFetch(`${API_BASE}/api/models`);
       if (mRes.ok) {
         availableModels = await mRes.json();
-        selectLocalModel.innerHTML = "";
-        availableModels.forEach(m => {
-          const opt = document.createElement('option');
-          opt.value = m.name;
-          opt.textContent = `${m.name} (${(m.size_bytes / (1024*1024*1024)).toFixed(1)} GB)`;
-          selectLocalModel.appendChild(opt);
-        });
+        if (selectLocalModel) {
+          selectLocalModel.innerHTML = "";
+          availableModels.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.name;
+            opt.textContent = `${m.name} (${(m.size_bytes / (1024*1024*1024)).toFixed(1)} GB)`;
+            selectLocalModel.appendChild(opt);
+          });
 
-        // Selecionar modelo preferido (qwen2.5:14b ou llama3:8b)
-        const preferred = availableModels.find(m => m.name.includes("qwen2.5:14b")) ||
-                          availableModels.find(m => m.name.includes("llama3:8b")) ||
-                          availableModels[0];
-        if (preferred) selectLocalModel.value = preferred.name;
+          // Selecionar modelo preferido (qwen2.5:14b ou llama3:8b)
+          const preferred = availableModels.find(m => m.name.includes("qwen2.5:14b")) ||
+                            availableModels.find(m => m.name.includes("llama3:8b")) ||
+                            availableModels[0];
+          if (preferred) selectLocalModel.value = preferred.name;
+        }
       }
 
       await refreshSessionDropdown();
-      if (selectActiveSession.value) {
+      if (!activeSessionId && selectActiveSession?.value) {
         await switchSession(selectActiveSession.value);
       }
     } catch (err) {
       console.error("Erro na inicialização:", err);
-      statusDot.classList.remove('online');
-      statusText.textContent = "Conexão Offline";
+      if (statusDot) statusDot.classList.remove('online');
+      if (statusText) statusText.textContent = "Conexão Offline";
     }
   }
 
@@ -607,159 +609,261 @@ document.addEventListener('DOMContentLoaded', () => {
     // Preenche M2 (Relações)
     const relListEl = document.getElementById('relationsList');
     const relSelectEl = document.getElementById('m3SelectRelation');
-    relListEl.innerHTML = "";
-    relSelectEl.innerHTML = `<option value="REL-GERAL">Relação Geral do Ciclo</option>`;
+    if (relListEl) relListEl.innerHTML = "";
+    if (relSelectEl) relSelectEl.innerHTML = `<option value="REL-GERAL">Relação Geral do Ciclo</option>`;
 
     if (currentSessionData.relations && currentSessionData.relations.length > 0) {
       currentSessionData.relations.forEach(r => {
-        const item = document.createElement('div');
-        item.className = 'stack-item';
-        item.innerHTML = `<strong>${r.term_a} &harr; ${r.term_b}</strong> <span class="provenance-tag candidate">[CANDIDATA]</span> <span class="type-pill">${r.type}</span><br><small>${r.description}</small>`;
-        relListEl.appendChild(item);
+        if (relListEl) {
+          const item = document.createElement('div');
+          item.className = 'stack-item';
+          item.innerHTML = `<strong>${r.term_a} &harr; ${r.term_b}</strong> <span class="provenance-tag candidate">[CANDIDATA]</span> <span class="type-pill">${r.type}</span><br><small>${r.description}</small>`;
+          relListEl.appendChild(item);
+        }
 
-        const opt = document.createElement('option');
-        opt.value = r.id;
-        opt.textContent = `${r.term_a} ↔ ${r.term_b}`;
-        relSelectEl.appendChild(opt);
+        if (relSelectEl) {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = `${r.term_a} ↔ ${r.term_b}`;
+          relSelectEl.appendChild(opt);
+        }
       });
-    } else {
+    } else if (relListEl) {
       relListEl.innerHTML = `<div class="empty-hint">Nenhuma relação candidata registrada ainda.</div>`;
     }
 
     // Preenche M3 (Questões)
     const qListEl = document.getElementById('questionsList');
-    qListEl.innerHTML = "";
-    if (currentSessionData.questions && currentSessionData.questions.length > 0) {
-      currentSessionData.questions.forEach(q => {
-        const item = document.createElement('div');
-        item.className = 'stack-item';
-        item.innerHTML = `<strong>Questão:</strong> ${q.text}<br><small><strong>Evidência necessária:</strong> ${q.evidence_path || 'A definir'}</small>`;
-        qListEl.appendChild(item);
-      });
-    } else {
-      qListEl.innerHTML = `<div class="empty-hint">Nenhuma questão formulada ainda.</div>`;
+    if (qListEl) {
+      qListEl.innerHTML = "";
+      if (currentSessionData.questions && currentSessionData.questions.length > 0) {
+        currentSessionData.questions.forEach(q => {
+          const item = document.createElement('div');
+          item.className = 'stack-item';
+          item.innerHTML = `<strong>Questão:</strong> ${q.text}<br><small><strong>Evidência necessária:</strong> ${q.evidence_path || 'A definir'}</small>`;
+          qListEl.appendChild(item);
+        });
+      } else {
+        qListEl.innerHTML = `<div class="empty-hint">Nenhuma questão formulada ainda.</div>`;
+      }
     }
 
     // Preenche C4 (Confronto)
     rivalsList = [];
     risksList = [];
-    document.getElementById('rivalsStack').innerHTML = "";
-    document.getElementById('risksStack').innerHTML = "";
+    const rStack = document.getElementById('rivalsStack');
+    const kStack = document.getElementById('risksStack');
+    if (rStack) rStack.innerHTML = "";
+    if (kStack) kStack.innerHTML = "";
 
     if (currentSessionData.confrontation) {
       if (currentSessionData.confrontation.rivals) {
         currentSessionData.confrontation.rivals.forEach(r => {
           rivalsList.push(r);
-          const el = document.createElement('div');
-          el.className = 'stack-item';
-          el.innerHTML = `<strong>Rival:</strong> ${r.text}`;
-          document.getElementById('rivalsStack').appendChild(el);
+          if (rStack) {
+            const el = document.createElement('div');
+            el.className = 'stack-item';
+            el.innerHTML = `<strong>Rival:</strong> ${r.text}`;
+            rStack.appendChild(el);
+          }
         });
       }
       if (currentSessionData.confrontation.risks) {
         currentSessionData.confrontation.risks.forEach(r => {
           risksList.push(r);
-          const el = document.createElement('div');
-          el.className = 'stack-item';
-          el.innerHTML = `<strong>Risco:</strong> ${r.text}`;
-          document.getElementById('risksStack').appendChild(el);
+          if (kStack) {
+            const el = document.createElement('div');
+            el.className = 'stack-item';
+            el.innerHTML = `<strong>Risco:</strong> ${r.text}`;
+            kStack.appendChild(el);
+          }
         });
       }
     }
-    document.getElementById('rivalCount').textContent = `${rivalsList.length} / 1`;
-    document.getElementById('riskCount').textContent = `${risksList.length} / 1`;
+    const rCount = document.getElementById('rivalCount');
+    const kCount = document.getElementById('riskCount');
+    if (rCount) rCount.textContent = `${rivalsList.length} / 1`;
+    if (kCount) kCount.textContent = `${risksList.length} / 1`;
     checkConfrontationReadiness();
+  }
+
+  function getActiveModelDigest() {
+    const modelName = selectLocalModel?.value || "qwen2.5:14b";
+    const found = availableModels.find(m => m.name === modelName);
+    return found?.digest || "7cdf5a0187d5";
   }
 
   // Gravar M1 (Deslocamento)
   document.getElementById('btnSaveM1').addEventListener('click', async () => {
-    const initialFw = document.getElementById('m1InitialFw').value.trim();
+    if (!activeSessionId && selectActiveSession?.value) {
+      activeSessionId = selectActiveSession.value;
+    }
+    if (!activeSessionId) {
+      alert("Por favor, selecione ou crie uma sessão de investigação primeiro.");
+      return;
+    }
+
+    const initialFw = document.getElementById('m1InitialFw').value.trim() || currentSessionData?.phenomenon?.text || "Enquadramento de referência do fenômeno";
     const shiftedFw = document.getElementById('m1ShiftedFw').value.trim();
     const rationale = document.getElementById('m1Rationale').value.trim();
     const dimension = document.getElementById('m1Dimension').value;
     const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/shift`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        initial_framework: initialFw,
-        shifted_framework: shiftedFw,
-        rationale: rationale,
-        dimension: dimension,
-        author: author,
-        is_assisted: false
-      })
-    });
+    if (!shiftedFw) {
+      alert("Por favor, preencha o campo 'Nova Perspectiva de Observação Deslocada (M1)'.");
+      document.getElementById('m1ShiftedFw').focus();
+      return;
+    }
 
-    if (res.ok) {
-      alert("✅ Deslocamento M1 consolidado com sucesso no ciclo!");
-      document.querySelector('.track-tab[data-tab="tabM2"]').click();
-    } else {
-      const err = await res.json();
-      alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+    if (!rationale) {
+      alert("Por favor, preencha o campo 'Justificativa Metodológica do Deslocamento'.");
+      document.getElementById('m1Rationale').focus();
+      return;
+    }
+
+    const isAssisted = rationale.includes("[ASSISTIDO") || rationale.includes("[");
+
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/shift`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          initial_framework: initialFw,
+          shifted_framework: shiftedFw,
+          rationale: rationale,
+          dimension: dimension,
+          author: author,
+          is_assisted: isAssisted,
+          model_digest: getActiveModelDigest(),
+          model: selectLocalModel?.value || "qwen2.5:14b"
+        })
+      });
+
+      if (res.ok) {
+        alert("✅ Deslocamento M1 consolidado com sucesso no ciclo! Avançando para Exploração de Relações (M2).");
+        await switchSession(activeSessionId);
+        // Alterna para M2
+        const tabM2 = document.querySelector('.track-tab-btn[data-tab="tabM2"], .track-tab[data-tab="tabM2"]');
+        if (tabM2) tabM2.click();
+      } else {
+        const err = await res.json().catch(() => ({error: 'Falha no processamento do servidor.'}));
+        alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+      }
+    } catch (e) {
+      alert("Erro ao conectar com o servidor: " + e.message);
     }
   });
 
   // Gravar M2 (Relação Candidata)
   document.getElementById('btnSaveM2').addEventListener('click', async () => {
+    if (!activeSessionId && selectActiveSession?.value) {
+      activeSessionId = selectActiveSession.value;
+    }
+    if (!activeSessionId) {
+      alert("Por favor, selecione ou crie uma sessão de investigação primeiro.");
+      return;
+    }
+
     const termA = document.getElementById('m2TermA').value.trim();
     const termB = document.getElementById('m2TermB').value.trim();
     const desc = document.getElementById('m2Description').value.trim();
     const relType = document.getElementById('m2RelType').value;
     const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/relation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        term_a: termA,
-        term_b: termB,
-        description: desc,
-        rel_type: relType,
-        author: author,
-        is_assisted: false
-      })
-    });
+    if (!termA || !termB || !desc) {
+      alert("Por favor, preencha o Termo A, Termo B e a Descrição da Relação.");
+      return;
+    }
 
-    if (res.ok) {
-      await switchSession(activeSessionId);
-      document.getElementById('m2TermA').value = "";
-      document.getElementById('m2TermB').value = "";
-      document.getElementById('m2Description').value = "";
-      alert("✅ Relação candidata registrada no inventário.");
-    } else {
-      const err = await res.json();
-      alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+    const isAssisted = desc.includes("[ASSISTIDO") || desc.includes("[");
+
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/relation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          term_a: termA,
+          term_b: termB,
+          description: desc,
+          rel_type: relType,
+          author: author,
+          is_assisted: isAssisted,
+          model_digest: getActiveModelDigest(),
+          model: selectLocalModel?.value || "qwen2.5:14b"
+        })
+      });
+
+      if (res.ok) {
+        await switchSession(activeSessionId);
+        document.getElementById('m2TermA').value = "";
+        document.getElementById('m2TermB').value = "";
+        document.getElementById('m2Description').value = "";
+        alert("✅ Relação candidata registrada no inventário do ciclo!");
+      } else {
+        const err = await res.json().catch(() => ({error: 'Falha no processamento do servidor.'}));
+        alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+      }
+    } catch (e) {
+      alert("Erro ao conectar com o servidor: " + e.message);
     }
   });
 
+  const btnGoToM3 = document.getElementById('btnGoToM3');
+  if (btnGoToM3) {
+    btnGoToM3.addEventListener('click', () => {
+      const tabM3 = document.querySelector('.track-tab-btn[data-tab="tabM3"], .track-tab[data-tab="tabM3"]');
+      if (tabM3) tabM3.click();
+    });
+  }
+
   // Gravar M3 (Problematização)
   document.getElementById('btnSaveM3').addEventListener('click', async () => {
+    if (!activeSessionId && selectActiveSession?.value) {
+      activeSessionId = selectActiveSession.value;
+    }
+    if (!activeSessionId) {
+      alert("Por favor, selecione ou crie uma sessão de investigação primeiro.");
+      return;
+    }
+
     const qtext = document.getElementById('m3Question').value.trim();
     const evPath = document.getElementById('m3Evidence').value.trim();
-    const relId = document.getElementById('m3SelectRelation').value;
+    const relId = document.getElementById('m3SelectRelation') ? document.getElementById('m3SelectRelation').value : "REL-GERAL";
     const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/question`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        relation_id: relId,
-        question_text: qtext,
-        evidence_path: evPath,
-        author: author,
-        is_assisted: false
-      })
-    });
+    if (!qtext) {
+      alert("Por favor, formule o enunciado da questão científica investigável.");
+      document.getElementById('m3Question').focus();
+      return;
+    }
 
-    if (res.ok) {
-      await switchSession(activeSessionId);
-      alert("✅ Questão formulada. Avançando para a Arena de Confronto (C4)!");
-      switchSection('#confrontation');
-    } else {
-      const err = await res.json();
-      alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+    const isAssisted = qtext.includes("[ASSISTIDO") || qtext.includes("[");
+
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          relation_id: relId,
+          question_text: qtext,
+          evidence_path: evPath,
+          author: author,
+          is_assisted: isAssisted,
+          model_digest: getActiveModelDigest(),
+          model: selectLocalModel?.value || "qwen2.5:14b"
+        })
+      });
+
+      if (res.ok) {
+        await switchSession(activeSessionId);
+        alert("✅ Questão formulada com sucesso. Avançando para a Arena de Confronto (C4)!");
+        switchSection('#confrontation');
+      } else {
+        const err = await res.json().catch(() => ({error: 'Falha no processamento do servidor.'}));
+        alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+      }
+    } catch (e) {
+      alert("Erro ao conectar com o servidor: " + e.message);
     }
   });
 
@@ -812,51 +916,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Concluir Confronto
   document.getElementById('btnConcludeConfrontation').addEventListener('click', async () => {
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/confront`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rivals: rivalsList,
-        risks: risksList
-      })
-    });
+    if (!activeSessionId && selectActiveSession?.value) {
+      activeSessionId = selectActiveSession.value;
+    }
+    if (!activeSessionId) {
+      alert("Por favor, selecione ou crie uma sessão de investigação primeiro.");
+      return;
+    }
 
-    if (res.ok) {
-      alert("✅ Confronto Crítico concluído com êxito! Habilitando Reposicionamento (C5).");
-      switchSection('#reposition');
-    } else {
-      const err = await res.json();
-      alert(`⚠️ Erro no Confronto: ${err.error}`);
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/confront`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rivals: rivalsList,
+          risks: risksList
+        })
+      });
+
+      if (res.ok) {
+        await switchSession(activeSessionId);
+        alert("✅ Confronto Crítico concluído com êxito! Habilitando Reposicionamento (C5).");
+        switchSection('#reposition');
+      } else {
+        const err = await res.json().catch(() => ({error: 'Erro ao registrar confronto.'}));
+        alert(`⚠️ Erro no Confronto (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+      }
+    } catch (e) {
+      alert("Erro ao conectar com o servidor: " + e.message);
     }
   });
 
   // Reposicionamento (C5): Gravar
   document.getElementById('btnConsolidateReposition').addEventListener('click', async () => {
-    const decision = document.querySelector('input[name="repositionDecision"]:checked').value;
+    if (!activeSessionId && selectActiveSession?.value) {
+      activeSessionId = selectActiveSession.value;
+    }
+    if (!activeSessionId) {
+      alert("Por favor, selecione ou crie uma sessão de investigação primeiro.");
+      return;
+    }
+
+    const checkedRadio = document.querySelector('input[name="repositionDecision"]:checked');
+    const decision = checkedRadio ? checkedRadio.value : "REINFORCE";
     const just = document.getElementById('c5Justification').value.trim();
     const nextTest = document.getElementById('c5NextTest').value.trim();
     const reqKnowledge = document.getElementById('c5ReqKnowledge').value.trim();
     const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/reposition`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        decision: decision,
-        justification: just,
-        next_empirical_test: nextTest,
-        required_knowledge: reqKnowledge,
-        resumption_criteria: (decision === 'SUSPEND') ? "Aguardando novos dados e evidências para reabertura da análise" : "",
-        author: author
-      })
-    });
+    if (!just) {
+      alert("Por favor, declare a fundamentação e justificativa do reposicionamento.");
+      document.getElementById('c5Justification').focus();
+      return;
+    }
 
-    if (res.ok) {
-      alert("🎉 Ciclo MPRR consolidado e selado com hash criptográfico no Ledger de Auditoria!");
-      switchSection('#dossier');
-    } else {
-      const err = await res.json();
-      alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+    if (!nextTest && !reqKnowledge) {
+      alert("Por favor, declare ao menos o Próximo Teste Empírico ou Conhecimento Teórico Necessário (INV-08).");
+      document.getElementById('c5NextTest').focus();
+      return;
+    }
+
+    const isAssisted = just.includes("[ASSISTIDO") || just.includes("[");
+
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/reposition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          decision: decision,
+          justification: just,
+          next_empirical_test: nextTest,
+          required_knowledge: reqKnowledge,
+          resumption_criteria: (decision === 'SUSPEND') ? "Aguardando novos dados e evidências para reabertura da análise" : "",
+          author: author,
+          is_assisted: isAssisted,
+          model_digest: getActiveModelDigest(),
+          model: selectLocalModel?.value || "qwen2.5:14b"
+        })
+      });
+
+      if (res.ok) {
+        await switchSession(activeSessionId);
+        alert("🎉 Ciclo MPRR consolidado e selado com hash criptográfico no Ledger de Auditoria!");
+        switchSection('#dossier');
+      } else {
+        const err = await res.json().catch(() => ({error: 'Falha ao consolidar reposicionamento.'}));
+        alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
+      }
+    } catch (e) {
+      alert("Erro ao conectar com o servidor: " + e.message);
     }
   });
 

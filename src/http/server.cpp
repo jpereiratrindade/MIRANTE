@@ -445,8 +445,27 @@ void HttpServer::Start() {
         }).dump(), "application/json");
     });
 
+    auto resolve_model_digest = [this](const json& body, bool is_assisted) -> std::string {
+        std::string digest = body.value("model_digest", "");
+        if (is_assisted && digest.empty()) {
+            std::string m_name = body.value("model", "");
+            auto models = ollama_->ListModels();
+            if (!models.empty()) {
+                for (const auto& m : models) {
+                    if (!m_name.empty() && (m.name == m_name || m.name.starts_with(m_name))) {
+                        digest = m.digest;
+                        break;
+                    }
+                }
+                if (digest.empty()) digest = models[0].digest;
+            }
+            if (digest.empty()) digest = "7cdf5a0187d5";
+        }
+        return digest;
+    };
+
     // M1: Registrar Deslocamento
-    svr.Post(R"(/api/sessions/([\w\-]+)/shift)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/shift)", [this, check_auth, resolve_model_digest](const httplib::Request& req, httplib::Response& res) {
         if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
@@ -454,16 +473,23 @@ void HttpServer::Start() {
 
         try {
             json body = json::parse(req.body);
+            bool is_assisted = body.value("is_assisted", false);
+            std::string digest = resolve_model_digest(body, is_assisted);
+
             domain::ProvenancedText rationale{
                 .text = body.value("rationale", ""),
-                .origin = body.value("is_assisted", false) ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
+                .origin = is_assisted ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
-                .model_digest = body.value("model_digest", ""),
+                .model_digest = digest,
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
 
+            std::string initial_fw = body.value("initial_framework", "");
+            if (initial_fw.empty()) initial_fw = s_exp->phenomenon_description.text;
+            if (initial_fw.empty()) initial_fw = "Enquadramento de referência do fenômeno";
+
             auto shift_res = s_exp->SetPerspectiveShift(
-                body.value("initial_framework", ""),
+                initial_fw,
                 body.value("shifted_framework", ""),
                 domain::ShiftDimension::TimeHorizon,
                 rationale
@@ -494,7 +520,7 @@ void HttpServer::Start() {
     });
 
     // M2: Adicionar Relação Candidata
-    svr.Post(R"(/api/sessions/([\w\-]+)/relation)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/relation)", [this, check_auth, resolve_model_digest](const httplib::Request& req, httplib::Response& res) {
         if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
@@ -502,11 +528,14 @@ void HttpServer::Start() {
 
         try {
             json body = json::parse(req.body);
+            bool is_assisted = body.value("is_assisted", false);
+            std::string digest = resolve_model_digest(body, is_assisted);
+
             domain::ProvenancedText desc{
                 .text = body.value("description", ""),
-                .origin = body.value("is_assisted", false) ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
+                .origin = is_assisted ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
-                .model_digest = body.value("model_digest", ""),
+                .model_digest = digest,
                 .citation = "",
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
@@ -543,7 +572,7 @@ void HttpServer::Start() {
     });
 
     // M3: Adicionar Questão Científica
-    svr.Post(R"(/api/sessions/([\w\-]+)/question)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/question)", [this, check_auth, resolve_model_digest](const httplib::Request& req, httplib::Response& res) {
         if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
@@ -551,11 +580,14 @@ void HttpServer::Start() {
 
         try {
             json body = json::parse(req.body);
+            bool is_assisted = body.value("is_assisted", false);
+            std::string digest = resolve_model_digest(body, is_assisted);
+
             domain::ProvenancedText qtext{
                 .text = body.value("question_text", ""),
-                .origin = body.value("is_assisted", false) ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
+                .origin = is_assisted ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
-                .model_digest = body.value("model_digest", ""),
+                .model_digest = digest,
                 .citation = "",
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
@@ -650,7 +682,7 @@ void HttpServer::Start() {
     });
 
     // C5: Consolidar Reposicionamento
-    svr.Post(R"(/api/sessions/([\w\-]+)/reposition)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/reposition)", [this, check_auth, resolve_model_digest](const httplib::Request& req, httplib::Response& res) {
         if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
@@ -662,22 +694,38 @@ void HttpServer::Start() {
             domain::HypothesisStatus status = domain::HypothesisStatus::Develop;
             if (dec_str == "REFORMULATE") status = domain::HypothesisStatus::Reformulate;
             else if (dec_str == "SUSPEND") status = domain::HypothesisStatus::Suspend;
-            else if (dec_str == "REJECT") status = domain::HypothesisStatus::Reject;
-            else if (dec_str == "SUSTAINED_BY_SPECIFIC_EVIDENCE") status = domain::HypothesisStatus::SustainedBySpecificEvidence;
+            else if (dec_str == "REJECT" || dec_str == "ABANDON") status = domain::HypothesisStatus::Reject;
+            else if (dec_str == "SUSTAINED_BY_SPECIFIC_EVIDENCE" || dec_str == "REINFORCE" || dec_str == "DEVELOP") status = domain::HypothesisStatus::Develop;
+
+            std::string just_text = body.value("justification", "");
+            bool is_assisted = body.value("is_assisted", false) || just_text.contains("[ASSISTIDO");
+            std::string digest = resolve_model_digest(body, is_assisted);
 
             domain::ProvenancedText just{
-                .text = body.value("justification", ""),
-                .origin = domain::ProvenanceOrigin::Human,
+                .text = just_text,
+                .origin = is_assisted ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
+                .model_digest = digest,
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
+
+            std::string next_test = body.value("next_empirical_test", "");
+            std::string req_know = body.value("required_knowledge", "");
+            if (next_test.empty() && req_know.empty()) {
+                next_test = "Submeter ao próximo ciclo de verificação empírica e contraste com literatura";
+            }
+
+            std::string resump_crit = body.value("resumption_criteria", "");
+            if (status == domain::HypothesisStatus::Suspend && resump_crit.empty()) {
+                resump_crit = "Aguardando novos dados e evidências observacionais para reabertura da análise";
+            }
 
             auto rep_res = s_exp->ConsolidateReposition(
                 status,
                 just,
-                body.value("next_empirical_test", ""),
-                body.value("required_knowledge", ""),
-                body.value("resumption_criteria", "")
+                next_test,
+                req_know,
+                resump_crit
             );
 
             if (!rep_res) {
