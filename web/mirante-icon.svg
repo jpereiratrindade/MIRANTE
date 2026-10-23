@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" role="img" aria-labelledby="title desc">
+  <title id="title">MIRANTE</title>
+  <desc id="desc">Torre de observação com abertura central e pontos relacionais</desc>
+  <g fill="none" stroke="#2ea8e8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 15.5 22 7l13 8.5"/>
+    <path d="M8.5 16.5h27v7h-27z"/>
+    <path d="m16.5 23.5-4 14M27.5 23.5l4 14M14 32h16M18.5 23.5 22 32l3.5-8.5"/>
+    <path d="M7 37.5h30"/>
+  </g>
+  <path d="M16.5 20c1.6-2 3.4-3 5.5-3s3.9 1 5.5 3c-1.6 2-3.4 3-5.5 3s-3.9-1-5.5-3Z" fill="#071e38" stroke="#2ea8e8" stroke-width="1.7"/>
+  <circle cx="22" cy="20" r="1.8" fill="#14805e"/>
+  <circle cx="9" cy="15.5" r="2.2" fill="#087f8c"/>
+  <circle cx="35" cy="15.5" r="2.2" fill="#087f8c"/>
+</svg>
