@@ -12,6 +12,7 @@ public:
     HttpServer(
         std::shared_ptr<storage::Database> db,
         std::shared_ptr<assist::OllamaClient> ollama,
+        std::string host = "0.0.0.0",
         std::string web_dir = "web",
         int port = 8088
     );
@@ -23,6 +24,7 @@ public:
 private:
     std::shared_ptr<storage::Database> db_;
     std::shared_ptr<assist::OllamaClient> ollama_;
+    std::string host_;
     std::string web_dir_;
     int port_;
     bool running_{false};

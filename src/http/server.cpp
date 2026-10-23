@@ -12,9 +12,10 @@ namespace mirante::http {
 HttpServer::HttpServer(
     std::shared_ptr<storage::Database> db,
     std::shared_ptr<assist::OllamaClient> ollama,
+    std::string host,
     std::string web_dir,
     int port
-) : db_(std::move(db)), ollama_(std::move(ollama)), web_dir_(std::move(web_dir)), port_(port) {}
+) : db_(std::move(db)), ollama_(std::move(ollama)), host_(std::move(host)), web_dir_(std::move(web_dir)), port_(port) {}
 
 HttpServer::~HttpServer() {
     Stop();
@@ -438,10 +439,10 @@ void HttpServer::Start() {
         svr.set_mount_point("/", web_dir_);
     }
 
-    std::cout << "[MIRANTE] Servidor C++26 iniciado em http://0.0.0.0:" << port_ << std::endl;
+    std::cout << "[MIRANTE] Servidor C++26 iniciado em http://" << host_ << ":" << port_ << std::endl;
     std::cout << "[MIRANTE] Servindo interface web a partir de: " << web_dir_ << std::endl;
     running_ = true;
-    svr.listen("0.0.0.0", port_);
+    svr.listen(host_.c_str(), port_);
     running_ = false;
 }
 
