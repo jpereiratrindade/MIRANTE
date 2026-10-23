@@ -1,5 +1,5 @@
 // Ecossistema SisTer — MIRANTE v0.1.0
-// Client-side Application Logic
+// Client-side Application Logic: Universal Scientific Instrument for MPRR
 
 document.addEventListener('DOMContentLoaded', () => {
   let activeSessionId = null;
@@ -7,16 +7,90 @@ document.addEventListener('DOMContentLoaded', () => {
   let rivalsList = [];
   let risksList = [];
   let pendingAssistantText = "";
+  let pendingAssistantMovement = "M1";
+  let availableModels = [];
 
-  const API_BASE = ""; // Relative to server root
+  const API_BASE = "";
 
-  // Elementos UI
+  // Elementos Principais
   const sessionBreadcrumb = document.getElementById('sessionBreadcrumb');
-  const currentSessionIdEl = document.getElementById('currentSessionId');
+  const selectActiveSession = document.getElementById('selectActiveSession');
+  const selectLocalModel = document.getElementById('selectLocalModel');
   const cycleBadge = document.getElementById('cycleBadge');
+  const doorPill = document.getElementById('doorPill');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
-  const activeModelName = document.getElementById('activeModelName');
+
+  // Modal de Nova Sessão
+  const modalNewSession = document.getElementById('modalNewSession');
+  const btnOpenNewSessionModal = document.getElementById('btnOpenNewSessionModal');
+  const btnCloseModal = document.getElementById('btnCloseModal');
+  const btnCancelModal = document.getElementById('btnCancelModal');
+  const btnConfirmCreateSession = document.getElementById('btnConfirmCreateSession');
+
+  // Abre Modal
+  btnOpenNewSessionModal.addEventListener('click', () => {
+    modalNewSession.style.display = 'flex';
+    document.getElementById('nsProjectId').focus();
+  });
+
+  // Fecha Modal
+  function closeModal() {
+    modalNewSession.style.display = 'none';
+  }
+  btnCloseModal.addEventListener('click', closeModal);
+  btnCancelModal.addEventListener('click', closeModal);
+  modalNewSession.addEventListener('click', (e) => {
+    if (e.target === modalNewSession) closeModal();
+  });
+
+  // Confirmar Criação de Nova Sessão (Qualquer Contexto)
+  btnConfirmCreateSession.addEventListener('click', async () => {
+    const projectId = document.getElementById('nsProjectId').value.trim() || "PRJ-GERAL";
+    const title = document.getElementById('nsTitle').value.trim() || "Nova Investigação MPRR";
+    const door = document.getElementById('nsDoor').value;
+    const phenomenon = document.getElementById('nsPhenomenon').value.trim();
+    const author = document.getElementById('nsAuthor').value.trim() || "Pesquisador";
+    const spatial = document.getElementById('nsSpatial').value.trim();
+    const temporal = document.getElementById('nsTemporal').value.trim();
+
+    if (!phenomenon) {
+      alert("Por favor, descreva o objeto e a situação do fenômeno.");
+      return;
+    }
+
+    const payload = {
+      session_id: `SES-${Date.now().toString().slice(-6)}`,
+      project_id: projectId,
+      title: title,
+      entrance_door: door,
+      phenomenon_text: phenomenon,
+      spatial_boundary: spatial,
+      temporal_boundary: temporal,
+      author: author
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        closeModal();
+        await refreshSessionDropdown(data.session_id);
+        await switchSession(data.session_id);
+        switchSection('#workbench');
+      } else {
+        const err = await res.json();
+        alert(`Erro ao criar sessão: ${err.error}`);
+      }
+    } catch (e) {
+      alert("Falha de conexão com o servidor MIRANTE.");
+    }
+  });
 
   // Navegação Lateral
   const navItems = document.querySelectorAll('.sidebar-menu .nav-item');
@@ -82,19 +156,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const suggestionBox = document.getElementById('suggestionBox');
   const sugText = document.getElementById('sugText');
   const sugModelName = document.getElementById('sugModelName');
+  const drawerModelTag = document.getElementById('drawerModelTag');
 
   btnCloseDrawer.addEventListener('click', () => {
     assistantDrawer.classList.remove('open');
   });
 
-  function openAssistant(contextLabel) {
+  function openAssistant(contextLabel, movementCode) {
+    pendingAssistantMovement = movementCode;
     drawerContextInfo.textContent = `Contexto: ${contextLabel}`;
     suggestionBox.style.display = 'none';
     drawerLoading.style.display = 'none';
+    drawerModelTag.textContent = selectLocalModel.value || "Ollama";
     assistantDrawer.classList.add('open');
   }
 
-  // Verificar Saúde e Iniciar
+  // Inicialização
   async function init() {
     try {
       const hRes = await fetch(`${API_BASE}/api/health`);
@@ -104,15 +181,29 @@ document.addEventListener('DOMContentLoaded', () => {
         statusText.textContent = hData.ollama_online ? "C++26 & Ollama Ativos" : "C++26 Ativo (Modo Humano)";
       }
 
+      // Carregar lista de modelos locais filtrando embeddings
       const mRes = await fetch(`${API_BASE}/api/models`);
       if (mRes.ok) {
-        const models = await mRes.json();
-        if (models.length > 0) {
-          activeModelName.textContent = models[0].name;
-        }
+        availableModels = await mRes.json();
+        selectLocalModel.innerHTML = "";
+        availableModels.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.name;
+          opt.textContent = `${m.name} (${(m.size_bytes / (1024*1024*1024)).toFixed(1)} GB)`;
+          selectLocalModel.appendChild(opt);
+        });
+
+        // Selecionar modelo preferido (qwen2.5:14b ou llama3:8b)
+        const preferred = availableModels.find(m => m.name.includes("qwen2.5:14b")) ||
+                          availableModels.find(m => m.name.includes("llama3:8b")) ||
+                          availableModels[0];
+        if (preferred) selectLocalModel.value = preferred.name;
       }
 
-      await loadOrInitSession();
+      await refreshSessionDropdown();
+      if (selectActiveSession.value) {
+        await switchSession(selectActiveSession.value);
+      }
     } catch (err) {
       console.error("Erro na inicialização:", err);
       statusDot.classList.remove('online');
@@ -120,49 +211,130 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function loadOrInitSession() {
+  // Carregar lista de sessões no dropdown
+  async function refreshSessionDropdown(selectId = null) {
     const res = await fetch(`${API_BASE}/api/sessions`);
+    if (!res.ok) return;
     const sessions = await res.json();
-    if (sessions && sessions.length > 0) {
-      activeSessionId = sessions[0].session_id;
-    } else {
-      // Cria sessão canônica piloto do Resiliência
-      const createRes = await fetch(`${API_BASE}/api/sessions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: "SES-2026-10-RES01",
-          project_id: "PRJ-RESILIENCIA",
-          title: "Relações ainda não evidentes no Projeto Resiliência",
-          entrance_door: "PATH_B_PHENOMENON_TO_KNOWLEDGE",
-          phenomenon_text: "Sistemas agropecuários familiares no bioma Pampa sujeitos à mesma estiagem severa desenvolvem trajetórias profundamente discrepantes de recuperação forrageira e financeira.",
-          author: "José Pedro Trindade"
-        })
-      });
-      const cData = await createRes.json();
-      activeSessionId = cData.session_id;
+
+    selectActiveSession.innerHTML = "";
+    if (sessions.length === 0) {
+      selectActiveSession.innerHTML = `<option value="">Nenhuma sessão encontrada</option>`;
+      return;
     }
 
-    await fetchSessionDetails(activeSessionId);
+    sessions.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.session_id;
+      opt.textContent = `${s.project_id}: ${s.title} (${s.session_id})`;
+      selectActiveSession.appendChild(opt);
+    });
+
+    if (selectId) {
+      selectActiveSession.value = selectId;
+    } else if (sessions.length > 0) {
+      selectActiveSession.value = sessions[0].session_id;
+    }
   }
 
-  async function fetchSessionDetails(sid) {
+  selectActiveSession.addEventListener('change', () => {
+    if (selectActiveSession.value) {
+      switchSession(selectActiveSession.value);
+    }
+  });
+
+  // Alternar Sessão Ativa
+  async function switchSession(sid) {
+    activeSessionId = sid;
     const res = await fetch(`${API_BASE}/api/sessions/${sid}`);
-    if (res.ok) {
-      currentSessionData = await res.json();
-      currentSessionIdEl.textContent = currentSessionData.session_id;
-      sessionBreadcrumb.textContent = `${currentSessionData.project_id} / ${currentSessionData.title}`;
-      cycleBadge.textContent = `Ciclo ${currentSessionData.current_cycle}`;
+    if (!res.ok) return;
 
-      if (currentSessionData.phenomenon) {
-        document.getElementById('m1InitialFw').value = currentSessionData.phenomenon.text || "";
+    currentSessionData = await res.json();
+    sessionBreadcrumb.textContent = `${currentSessionData.project_id} / ${currentSessionData.title}`;
+    cycleBadge.textContent = `Ciclo ${currentSessionData.current_cycle}`;
+
+    const isDoorA = currentSessionData.entrance_door === "PATH_A_KNOWLEDGE_TO_PHENOMENON";
+    doorPill.textContent = isDoorA ? "Caminho A: Conhecimento → Realidade" : "Caminho B: Emergente → Conhecimento";
+    doorPill.className = isDoorA ? "door-pill door-a" : "door-pill door-b";
+
+    // Preenche M1
+    document.getElementById('m1InitialFw').value = currentSessionData.phenomenon ? currentSessionData.phenomenon.text : "";
+    if (currentSessionData.shift) {
+      document.getElementById('m1ShiftedFw').value = currentSessionData.shift.shifted || "";
+      document.getElementById('m1Rationale').value = currentSessionData.shift.rationale || "";
+      if (currentSessionData.shift.dimension) {
+        document.getElementById('m1Dimension').value = currentSessionData.shift.dimension;
       }
+    } else {
+      document.getElementById('m1ShiftedFw').value = "";
+      document.getElementById('m1Rationale').value = "";
+    }
 
-      if (currentSessionData.shift) {
-        document.getElementById('m1ShiftedFw').value = currentSessionData.shift.shifted || "";
-        document.getElementById('m1Rationale').value = currentSessionData.shift.rationale || "";
+    // Preenche M2 (Relações)
+    const relListEl = document.getElementById('relationsList');
+    const relSelectEl = document.getElementById('m3SelectRelation');
+    relListEl.innerHTML = "";
+    relSelectEl.innerHTML = `<option value="REL-GERAL">Relação Geral do Ciclo</option>`;
+
+    if (currentSessionData.relations && currentSessionData.relations.length > 0) {
+      currentSessionData.relations.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'stack-item';
+        item.innerHTML = `<strong>${r.term_a} &harr; ${r.term_b}</strong> <span class="provenance-tag candidate">[CANDIDATA]</span> <span class="type-pill">${r.type}</span><br><small>${r.description}</small>`;
+        relListEl.appendChild(item);
+
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = `${r.term_a} ↔ ${r.term_b}`;
+        relSelectEl.appendChild(opt);
+      });
+    } else {
+      relListEl.innerHTML = `<div class="empty-hint">Nenhuma relação candidata registrada ainda.</div>`;
+    }
+
+    // Preenche M3 (Questões)
+    const qListEl = document.getElementById('questionsList');
+    qListEl.innerHTML = "";
+    if (currentSessionData.questions && currentSessionData.questions.length > 0) {
+      currentSessionData.questions.forEach(q => {
+        const item = document.createElement('div');
+        item.className = 'stack-item';
+        item.innerHTML = `<strong>Questão:</strong> ${q.text}<br><small><strong>Evidência necessária:</strong> ${q.evidence_path || 'A definir'}</small>`;
+        qListEl.appendChild(item);
+      });
+    } else {
+      qListEl.innerHTML = `<div class="empty-hint">Nenhuma questão formulada ainda.</div>`;
+    }
+
+    // Preenche C4 (Confronto)
+    rivalsList = [];
+    risksList = [];
+    document.getElementById('rivalsStack').innerHTML = "";
+    document.getElementById('risksStack').innerHTML = "";
+
+    if (currentSessionData.confrontation) {
+      if (currentSessionData.confrontation.rivals) {
+        currentSessionData.confrontation.rivals.forEach(r => {
+          rivalsList.push(r);
+          const el = document.createElement('div');
+          el.className = 'stack-item';
+          el.innerHTML = `<strong>Rival:</strong> ${r.text}`;
+          document.getElementById('rivalsStack').appendChild(el);
+        });
+      }
+      if (currentSessionData.confrontation.risks) {
+        currentSessionData.confrontation.risks.forEach(r => {
+          risksList.push(r);
+          const el = document.createElement('div');
+          el.className = 'stack-item';
+          el.innerHTML = `<strong>Risco:</strong> ${r.text}`;
+          document.getElementById('risksStack').appendChild(el);
+        });
       }
     }
+    document.getElementById('rivalCount').textContent = `${rivalsList.length} / 1`;
+    document.getElementById('riskCount').textContent = `${risksList.length} / 1`;
+    checkConfrontationReadiness();
   }
 
   // Gravar M1 (Deslocamento)
@@ -180,14 +352,13 @@ document.addEventListener('DOMContentLoaded', () => {
         shifted_framework: shiftedFw,
         rationale: rationale,
         dimension: dimension,
-        author: "José Pedro Trindade",
+        author: "Pesquisador",
         is_assisted: false
       })
     });
 
     if (res.ok) {
       alert("✅ Deslocamento M1 consolidado com sucesso no ciclo!");
-      // Avança para aba M2
       document.querySelector('.track-tab[data-tab="tabM2"]').click();
     } else {
       const err = await res.json();
@@ -210,22 +381,16 @@ document.addEventListener('DOMContentLoaded', () => {
         term_b: termB,
         description: desc,
         rel_type: relType,
-        author: "José Pedro Trindade",
+        author: "Pesquisador",
         is_assisted: false
       })
     });
 
     if (res.ok) {
-      const listEl = document.getElementById('relationsList');
-      const item = document.createElement('div');
-      item.className = 'stack-item';
-      item.innerHTML = `<strong>${termA} &harr; ${termB}</strong> <span class="provenance-tag candidate">[CANDIDATA]</span><br><small>${desc}</small>`;
-      listEl.appendChild(item);
-
+      await switchSession(activeSessionId);
       document.getElementById('m2TermA').value = "";
       document.getElementById('m2TermB').value = "";
       document.getElementById('m2Description').value = "";
-
       alert("✅ Relação candidata registrada no inventário.");
     } else {
       const err = await res.json();
@@ -237,19 +402,22 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btnSaveM3').addEventListener('click', async () => {
     const qtext = document.getElementById('m3Question').value.trim();
     const evPath = document.getElementById('m3Evidence').value.trim();
+    const relId = document.getElementById('m3SelectRelation').value;
 
     const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/question`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        relation_id: relId,
         question_text: qtext,
         evidence_path: evPath,
-        author: "José Pedro Trindade",
+        author: "Pesquisador",
         is_assisted: false
       })
     });
 
     if (res.ok) {
+      await switchSession(activeSessionId);
       alert("✅ Questão formulada. Avançando para a Arena de Confronto (C4)!");
       switchSection('#confrontation');
     } else {
@@ -336,8 +504,8 @@ document.addEventListener('DOMContentLoaded', () => {
         justification: just,
         next_empirical_test: nextTest,
         required_knowledge: reqKnowledge,
-        resumption_criteria: (decision === 'SUSPEND') ? "Aguardando novos levantamentos empíricos" : "",
-        author: "José Pedro Trindade"
+        resumption_criteria: (decision === 'SUSPEND') ? "Aguardando novos dados e evidências para reabertura da análise" : "",
+        author: "Pesquisador"
       })
     });
 
@@ -350,9 +518,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Assistência Local (Ollama): M1
+  // Assistência Local: M1 (Deslocamento)
   document.getElementById('btnAssistShift').addEventListener('click', async () => {
-    openAssistant("M1 Deslocamento de Perspectiva");
+    openAssistant("M1 Deslocamento de Perspectiva", "M1");
     drawerLoading.style.display = 'flex';
 
     try {
@@ -361,7 +529,67 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           phenomenon: document.getElementById('m1InitialFw').value,
-          current_framework: "Foco exclusivo na precipitação anual e taxa de lotação animal"
+          current_framework: "Perspectiva e enquadramento habitual registrado",
+          model: selectLocalModel.value
+        })
+      });
+      const data = await res.json();
+      drawerLoading.style.display = 'none';
+
+      if (data.suggestion) {
+        pendingAssistantText = data.suggestion;
+        sugText.textContent = data.suggestion;
+        sugModelName.textContent = data.model;
+        suggestionBox.style.display = 'block';
+      }
+    } catch (e) {
+      drawerLoading.style.display = 'none';
+      alert("Assistência local offline ou indisponível.");
+    }
+  });
+
+  // Assistência Local: M2 (Relações)
+  document.getElementById('btnAssistRelation').addEventListener('click', async () => {
+    openAssistant("M2 Exploração de Relações", "M2");
+    drawerLoading.style.display = 'flex';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/assist/relation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phenomenon: document.getElementById('m1InitialFw').value,
+          shifted_framework: document.getElementById('m1ShiftedFw').value,
+          model: selectLocalModel.value
+        })
+      });
+      const data = await res.json();
+      drawerLoading.style.display = 'none';
+
+      if (data.suggestion) {
+        pendingAssistantText = data.suggestion;
+        sugText.textContent = data.suggestion;
+        sugModelName.textContent = data.model;
+        suggestionBox.style.display = 'block';
+      }
+    } catch (e) {
+      drawerLoading.style.display = 'none';
+      alert("Assistência local offline ou indisponível.");
+    }
+  });
+
+  // Assistência Local: M3 (Problematização)
+  document.getElementById('btnAssistQuestion').addEventListener('click', async () => {
+    openAssistant("M3 Formulação de Perguntas", "M3");
+    drawerLoading.style.display = 'flex';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/assist/question`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          relation: document.getElementById('m2Description').value || "Relação candidata do ciclo",
+          model: selectLocalModel.value
         })
       });
       const data = await res.json();
@@ -385,11 +613,16 @@ document.addEventListener('DOMContentLoaded', () => {
     box.innerHTML = '<em>Consultando motor de ceticismo do modelo local...</em>';
 
     try {
+      const hipText = currentSessionData && currentSessionData.questions && currentSessionData.questions.length > 0 
+        ? currentSessionData.questions[0].text 
+        : "Proposição relacional em análise";
+
       const res = await fetch(`${API_BASE}/api/assist/confront`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hypothesis: "A resiliência das pastagens depende da memória biológica do solo acumulada na década anterior."
+          hypothesis: hipText,
+          model: selectLocalModel.value
         })
       });
       const data = await res.json();
@@ -397,22 +630,36 @@ document.addEventListener('DOMContentLoaded', () => {
         box.innerHTML = `<div style="white-space: pre-wrap; font-size: 13px; line-height: 1.6;">${data.suggestion}</div>`;
       }
     } catch (e) {
-      box.innerHTML = '<em>Assistência crítica indisponível. Preencha manualmente os campos acima.</em>';
+      box.innerHTML = '<em>Assistência crítica indisponível. Preencha manualmente os campos de confronto.</em>';
     }
   });
 
-  // Ações sobre a Sugestão do Assistente (Os 4 Botões do MPRR)
+  // As 4 Ações sobre Sugestões da Assistência
   document.getElementById('btnAcceptSug').addEventListener('click', () => {
-    document.getElementById('m1ShiftedFw').value = pendingAssistantText;
-    document.getElementById('m1Rationale').value = "Incorporado a partir da exploração assistida pelo modelo local.";
+    if (pendingAssistantMovement === 'M1') {
+      document.getElementById('m1ShiftedFw').value = pendingAssistantText;
+      document.getElementById('m1Rationale').value = "Incorporado a partir de exploração assistida.";
+    } else if (pendingAssistantMovement === 'M2') {
+      document.getElementById('m2Description').value = pendingAssistantText;
+    } else if (pendingAssistantMovement === 'M3') {
+      document.getElementById('m3Question').value = pendingAssistantText;
+    }
     assistantDrawer.classList.remove('open');
-    alert("Sugestão aceita como rascunho com tag de proveniência [ASSISTIDO].");
+    alert("Sugestão aceita como rascunho com rótulo [ASSISTIDO].");
   });
 
   document.getElementById('btnEditSug').addEventListener('click', () => {
-    document.getElementById('m1ShiftedFw').value = pendingAssistantText;
+    if (pendingAssistantMovement === 'M1') {
+      document.getElementById('m1ShiftedFw').value = pendingAssistantText;
+      document.getElementById('m1ShiftedFw').focus();
+    } else if (pendingAssistantMovement === 'M2') {
+      document.getElementById('m2Description').value = pendingAssistantText;
+      document.getElementById('m2Description').focus();
+    } else if (pendingAssistantMovement === 'M3') {
+      document.getElementById('m3Question').value = pendingAssistantText;
+      document.getElementById('m3Question').focus();
+    }
     assistantDrawer.classList.remove('open');
-    document.getElementById('m1ShiftedFw').focus();
   });
 
   document.getElementById('btnRejectSug').addEventListener('click', () => {
@@ -420,9 +667,70 @@ document.addEventListener('DOMContentLoaded', () => {
     assistantDrawer.classList.remove('open');
   });
 
-  document.getElementById('btnCounterSug').addEventListener('click', () => {
-    alert("Solicitando contraponto crítico socrático à própria proposição...");
+  document.getElementById('btnCounterSug').addEventListener('click', async () => {
+    drawerLoading.style.display = 'flex';
+    suggestionBox.style.display = 'none';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/assist/confront`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hypothesis: pendingAssistantText,
+          model: selectLocalModel.value
+        })
+      });
+      const data = await res.json();
+      drawerLoading.style.display = 'none';
+      if (data.suggestion) {
+        pendingAssistantText = `[CONTRAPONTO AO RASCUNHO]:\n${data.suggestion}`;
+        sugText.textContent = pendingAssistantText;
+        suggestionBox.style.display = 'block';
+      }
+    } catch (e) {
+      drawerLoading.style.display = 'none';
+      alert("Falha ao gerar contraponto.");
+    }
   });
+
+  // Renderizar Trilha de Proveniência (Merkle Chain)
+  async function renderProvenanceLedger() {
+    if (!activeSessionId) return;
+    const timeline = document.getElementById('eventTimeline');
+    timeline.innerHTML = `<div class="empty-hint">Consultando ledger criptográfico...</div>`;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}`);
+      if (!res.ok) return;
+      const s = await res.json();
+
+      timeline.innerHTML = `
+        <div class="timeline-item">
+          <div class="tl-badge">001</div>
+          <div class="tl-content">
+            <strong>Gênese da Sessão:</strong> ${s.session_id} (${s.project_id})<br>
+            <small>Porta: ${s.entrance_door} | Autoria: ${s.phenomenon ? s.phenomenon.author : 'Pesquisador'}</small>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-badge">002</div>
+          <div class="tl-content">
+            <strong>Deslocamento Registrado:</strong> ${s.shift ? s.shift.dimension : 'Pendente'}<br>
+            <small>${s.shift ? s.shift.rationale : 'Aguardando consolidação de M1'}</small>
+          </div>
+        </div>
+        <div class="timeline-item">
+          <div class="tl-badge">003</div>
+          <div class="tl-content">
+            <strong>Conexões Relacionais:</strong> ${s.relations ? s.relations.length : 0} registradas.<br>
+            <small>Status: Todas preservadas como CANDIDATA (INV-01).</small>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      timeline.innerHTML = `<div class="empty-hint">Erro ao carregar auditoria.</div>`;
+    }
+  }
 
   // Renderizar Dossiê
   async function renderDossier() {
@@ -432,14 +740,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const s = await res.json();
 
     document.getElementById('metaId').textContent = s.session_id;
+    document.getElementById('metaProject').textContent = s.project_id;
+    document.getElementById('metaCycle').textContent = s.current_cycle;
+
     document.getElementById('sheetPhenomenon').textContent = s.phenomenon ? s.phenomenon.text : "--";
-    document.getElementById('sheetInitialFw').textContent = s.phenomenon ? s.phenomenon.text : "--";
-    document.getElementById('sheetShiftedFw').textContent = s.shift ? `${s.shift.shifted} (Dimensão: ${s.shift.dimension})` : "--";
-    document.getElementById('sheetRelations').textContent = `${s.relations_count || 0} relação(ões) candidata(s) catalogada(s)`;
-    document.getElementById('sheetQuestions').textContent = `${s.questions_count || 0} questão(ões) investigável(is) gerada(s)`;
-    document.getElementById('sheetConfrontation').textContent = s.confrontation_done ? "Confronto concluído: Explicações rivais e riscos de invalidação registrados." : "Pendente de confronto obrigatório";
+    document.getElementById('sheetInitialFw').textContent = s.shift ? s.shift.initial : (s.phenomenon ? s.phenomenon.text : "--");
+    document.getElementById('sheetShiftedFw').textContent = s.shift ? `${s.shift.shifted} (Dimensão: ${s.shift.dimension} | Justificativa: ${s.shift.rationale})` : "--";
+
+    if (s.relations && s.relations.length > 0) {
+      document.getElementById('sheetRelations').innerHTML = s.relations.map(r => `&bull; <strong>${r.term_a} &harr; ${r.term_b}</strong> [${r.type}]: ${r.description}`).join('<br>');
+    } else {
+      document.getElementById('sheetRelations').textContent = "--";
+    }
+
+    if (s.questions && s.questions.length > 0) {
+      document.getElementById('sheetQuestions').innerHTML = s.questions.map(q => `&bull; ${q.text} (Evidência: ${q.evidence_path || 'A coletar'})`).join('<br>');
+    } else {
+      document.getElementById('sheetQuestions').textContent = "--";
+    }
+
+    if (s.confrontation && s.confrontation.rivals) {
+      const rivalsText = s.confrontation.rivals.map(r => `[Rival]: ${r.text}`).join('<br>');
+      const risksText = s.confrontation.risks ? s.confrontation.risks.map(r => `[Risco]: ${r.text}`).join('<br>') : "";
+      document.getElementById('sheetConfrontation').innerHTML = `${rivalsText}<br>${risksText}`;
+    } else {
+      document.getElementById('sheetConfrontation').textContent = "Pendente de confronto obrigatório";
+    }
+
     document.getElementById('sheetReposition').textContent = `Ciclo ${s.current_cycle} em consolidação`;
-    document.getElementById('sheetProvenance').textContent = "Pesquisador: José Pedro Trindade | Núcleo: C++26 | IA: Ollama Local (Auditado)";
+    document.getElementById('sheetProvenance').textContent = `Núcleo C++26 | IA Local: ${selectLocalModel.value || 'Ollama'} | Integridade Procedimental Ativa`;
   }
 
   // Exportar .sister-research.json

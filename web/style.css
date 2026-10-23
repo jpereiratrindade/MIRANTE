@@ -95,6 +95,39 @@ body {
   font-weight: 500;
 }
 
+.sidebar-session-selector {
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.selector-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.session-dropdown {
+  width: 100%;
+  background: var(--sister-navy-deep);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  margin-bottom: 8px;
+}
+
+.session-dropdown:focus {
+  outline: none;
+  border-color: var(--sister-blue-sky);
+}
+
 .sidebar-menu {
   flex: 1;
   padding: 16px 12px;
@@ -904,3 +937,192 @@ button {
   font-size: 20px;
   cursor: pointer;
 }
+
+/* Protocol Boxes & Guiding Questions */
+.protocol-box {
+  background: #fbf7f0;
+  border: 1px solid rgba(173, 120, 65, 0.3);
+  border-left: 4px solid var(--sister-amber-shift);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.protocol-box.confrontation-box {
+  background: #fff8f8;
+  border-color: rgba(217, 83, 79, 0.3);
+  border-left-color: var(--sister-red-risk);
+}
+
+.protocol-box.reposition-box {
+  background: #f0f7f5;
+  border-color: rgba(20, 128, 94, 0.3);
+  border-left-color: var(--sister-green-mech);
+}
+
+.protocol-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.protocol-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--sister-amber-shift);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.protocol-badge.alert {
+  background: var(--sister-red-risk);
+}
+
+.protocol-badge.success {
+  background: var(--sister-green-mech);
+}
+
+.protocol-rule {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sister-navy-deep);
+}
+
+.guiding-question {
+  margin: 10px 0;
+  font-size: 14px;
+  color: var(--sister-navy-deep);
+}
+
+.guiding-question em {
+  display: block;
+  font-size: 11px;
+  color: var(--sister-text-muted);
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.protocol-product {
+  font-size: 12px;
+  color: var(--sister-text-muted);
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+
+/* Door Pills */
+.door-pill {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.door-pill.door-a {
+  background: #e8eaf6;
+  color: #283593;
+  border: 1px solid #c5cae9;
+}
+
+.door-pill.door-b {
+  background: #e0f2f1;
+  color: #00695c;
+  border: 1px solid #b2dfdb;
+}
+
+/* Model Selector in Footer */
+.model-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.model-picker-row label {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+}
+
+.model-select {
+  background: var(--sister-navy-deep);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* Hints & Pills */
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--sister-text-muted);
+  margin-top: 4px;
+}
+
+.type-pill {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: #eef2f5;
+  color: #475569;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.inventory-section {
+  margin-top: 24px;
+}
+
+.inventory-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--sister-navy-deep);
+  margin-bottom: 12px;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: var(--sister-text-muted);
+  font-style: italic;
+  padding: 12px 0;
+}
+
+/* Timeline */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 10px 14px;
+  background: #fafbfc;
+  border: 1px solid var(--sister-border);
+  border-radius: var(--radius-sm);
+}
+
+.tl-badge {
+  background: var(--sister-navy-surface);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tl-content {
+  flex: 1;
+  font-size: 13px;
+}
+

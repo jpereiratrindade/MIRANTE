@@ -132,6 +132,49 @@ void HttpServer::Start() {
             return;
         }
 
+        json relations_j = json::array();
+        for (const auto& r : s_exp->relations) {
+            relations_j.push_back({
+                {"id", r.id},
+                {"term_a", r.term_a},
+                {"term_b", r.term_b},
+                {"type", domain::ToString(r.type)},
+                {"status", domain::ToString(r.status)},
+                {"description", r.description.text},
+                {"author", r.description.author}
+            });
+        }
+
+        json questions_j = json::array();
+        for (const auto& q : s_exp->questions) {
+            questions_j.push_back({
+                {"id", q.id},
+                {"relation_id", q.relation_id},
+                {"text", q.question_text.text},
+                {"evidence_path", q.required_evidence_path},
+                {"author", q.question_text.author}
+            });
+        }
+
+        json confrontation_j = json(nullptr);
+        if (s_exp->confrontation.has_value()) {
+            json rivals_j = json::array();
+            for (const auto& riv : s_exp->confrontation->rival_explanations) {
+                rivals_j.push_back({{"text", riv.text}, {"author", riv.author}});
+            }
+            json risks_j = json::array();
+            for (const auto& rsk : s_exp->confrontation->epistemic_risks) {
+                risks_j.push_back({{"text", rsk.text}, {"author", rsk.author}});
+            }
+            confrontation_j = {
+                {"id", s_exp->confrontation->id},
+                {"hypothesis_id", s_exp->confrontation->hypothesis_id},
+                {"is_concluded", s_exp->confrontation->is_concluded},
+                {"rivals", rivals_j},
+                {"risks", risks_j}
+            };
+        }
+
         // Carrega representação JSON completa
         res.set_content(json({
             {"session_id", s_exp->session_id},
@@ -139,6 +182,9 @@ void HttpServer::Start() {
             {"title", s_exp->title},
             {"entrance_door", domain::ToString(s_exp->entrance_door)},
             {"current_cycle", s_exp->current_cycle},
+            {"spatial_boundary", s_exp->spatial_boundary},
+            {"temporal_boundary", s_exp->temporal_boundary},
+            {"research_context", s_exp->research_context},
             {"phenomenon", {
                 {"text", s_exp->phenomenon_description.text},
                 {"author", s_exp->phenomenon_description.author}
@@ -150,9 +196,9 @@ void HttpServer::Start() {
                 {"dimension", domain::ToString(s_exp->shift->dimension)},
                 {"rationale", s_exp->shift->rationale.text}
             }) : json(nullptr)},
-            {"relations_count", s_exp->relations.size()},
-            {"questions_count", s_exp->questions.size()},
-            {"hypotheses_count", s_exp->hypotheses.size()},
+            {"relations", relations_j},
+            {"questions", questions_j},
+            {"confrontation", confrontation_j},
             {"confrontation_done", s_exp->confrontation.has_value() && s_exp->confrontation->is_concluded}
         }).dump(), "application/json");
     });
@@ -400,6 +446,50 @@ void HttpServer::Start() {
             json body = json::parse(req.body);
             std::string model = body.value("model", "qwen2.5:14b");
             auto r = ollama_->SuggestShift(body.value("phenomenon", ""), body.value("current_framework", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            res.set_content(json({{"suggestion", *r}, {"model", model}}).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/relation", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->SuggestRelations(body.value("phenomenon", ""), body.value("shifted_framework", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            res.set_content(json({{"suggestion", *r}, {"model", model}}).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/question", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->SuggestQuestions(body.value("relation", ""), model);
             if (!r) {
                 res.status = 500;
                 res.set_content(json({{"error", r.error()}}).dump(), "application/json");

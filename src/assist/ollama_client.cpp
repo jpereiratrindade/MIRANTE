@@ -42,8 +42,13 @@ std::vector<OllamaModelInfo> OllamaClient::ListModels() {
         json j = json::parse(res->body);
         if (j.contains("models")) {
             for (const auto& m : j["models"]) {
+                std::string name = m.value("name", "");
+                // Filtra modelos de embedding puros que não geram texto
+                if (name.find("embed") != std::string::npos) {
+                    continue;
+                }
                 models.push_back(OllamaModelInfo{
-                    .name = m.value("name", ""),
+                    .name = name,
                     .digest = m.value("digest", "").substr(0, 12),
                     .size_bytes = m.value("size", 0ULL)
                 });

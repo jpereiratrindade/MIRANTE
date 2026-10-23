@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MIRANTE — Experiência Assistida de Percepção Relacional</title>
-  <meta name="description" content="Ecossistema SisTer: Sistema MPRR Assistido em C++26 para exploração heurística e crítica rigorosa de questões científicas.">
+  <meta name="description" content="Ecossistema SisTer: Sistema MPRR Assistido em C++26 para exploração heurística e crítica rigorosa de questões científicas em qualquer domínio.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
@@ -20,11 +20,19 @@
         <div class="brand-sub">Percepção Relacional</div>
       </div>
 
+      <div class="sidebar-session-selector">
+        <label for="selectActiveSession" class="selector-label">Sessão em Foco:</label>
+        <select id="selectActiveSession" class="session-dropdown">
+          <option value="">Carregando sessões...</option>
+        </select>
+        <button class="btn-new-session" id="btnOpenNewSessionModal">+ Nova Sessão MPRR</button>
+      </div>
+
       <nav class="sidebar-menu">
-        <div class="menu-label">Sessão Ativa</div>
+        <div class="menu-label">Percurso da Sessão</div>
         <a href="#workbench" class="nav-item active" id="navWorkbench">
           <span class="nav-icon">🔭</span>
-          <span class="nav-text">Bancada MPRR</span>
+          <span class="nav-text">Bancada Heurística</span>
           <span class="nav-badge" id="badgeStep">M1-M3</span>
         </a>
         <a href="#confrontation" class="nav-item" id="navConfront">
@@ -47,9 +55,6 @@
           <span class="nav-icon">📜</span>
           <span class="nav-text">Dossiê e Exportação</span>
         </a>
-
-        <div class="menu-label">Ecossistema</div>
-        <button class="btn-new-session" id="btnOpenNewSessionModal">+ Nova Sessão MPRR</button>
       </nav>
 
       <div class="sidebar-footer">
@@ -57,9 +62,11 @@
           <span class="status-dot online" id="statusDot"></span>
           <span class="status-text" id="statusText">Núcleo C++26 Ativo</span>
         </div>
-        <div class="model-indicator">
-          <span class="model-label">IA Local:</span>
-          <span class="model-name" id="activeModelName">qwen2.5:14b</span>
+        <div class="model-picker-row">
+          <label for="selectLocalModel">Motor Local:</label>
+          <select id="selectLocalModel" class="model-select">
+            <option value="qwen2.5:14b">qwen2.5:14b</option>
+          </select>
         </div>
       </div>
     </aside>
@@ -69,12 +76,13 @@
       <!-- Topbar com Identidade e Metadados -->
       <header class="topbar">
         <div class="topbar-left">
-          <div class="session-crumb" id="sessionBreadcrumb">Projeto Resiliência / <span id="currentSessionId">Carregando...</span></div>
+          <div class="session-crumb" id="sessionBreadcrumb">Projeto / Sessão Ativa</div>
           <div class="session-maxim">
             <em>"Automatizar a exploração. Preservar a dúvida. Registrar o percurso. Submeter a descoberta à crítica."</em>
           </div>
         </div>
         <div class="topbar-right">
+          <div class="door-pill" id="doorPill" title="Porta de Entrada metodológica">Porta B</div>
           <div class="integrity-pill procedimental" title="Garantia formal de integridade procedimental auditada">
             <span class="pill-icon">🛡️</span> Integridade Procedimental Ativa
           </div>
@@ -85,37 +93,65 @@
       <!-- Conteúdo Dinâmico das Seções -->
       <div class="workspace-body">
         
-        <!-- BANCADA MPRR (M1, M2, M3) -->
+        <!-- BANCADA HEURÍSTICA MPRR (M1, M2, M3) -->
         <section id="sectionWorkbench" class="active-section">
-          <!-- Alertas Epistêmicos Nativos D1-D5 -->
+          
+          <!-- Banner das 5 Distinções Epistêmicas (D1 a D5) -->
           <div class="epistemic-banner">
-            <span class="banner-icon">💡</span>
+            <span class="banner-icon">⚖️</span>
             <div class="banner-content">
-              <strong>Distinção Epistêmica D2:</strong> Toda conexão inicial nasce estritamente como <span class="tag-candidate">CANDIDATA</span>. O deslocamento de perspectiva altera o enquadramento interpretativo, não o estado do objeto real (D1).
+              <strong>Distinções Epistêmicas do MPRR:</strong>
+              <span class="epistemic-item"><strong>D1:</strong> Realidade &ne; Representação</span> &bull;
+              <span class="epistemic-item"><strong>D2:</strong> Relação Percebida (<span class="tag-candidate">CANDIDATA</span>) &ne; Demonstrada</span> &bull;
+              <span class="epistemic-item"><strong>D3:</strong> Correlação &ne; Mecanismo</span> &bull;
+              <span class="epistemic-item"><strong>D4:</strong> Geração &ne; Avaliação</span> &bull;
+              <span class="epistemic-item"><strong>D5:</strong> Explicação &ne; Intervenção</span>
             </div>
           </div>
 
-          <!-- Trilha de Abas dos Movimentos -->
+          <!-- Trilha dos Três Movimentos Heurísticos -->
           <div class="movements-track">
             <button class="track-tab active" data-tab="tabM1">
               <span class="tab-num">1</span>
-              <span class="tab-label">Deslocar</span>
-              <span class="tab-desc">Mudar o enquadramento</span>
+              <div class="tab-texts">
+                <span class="tab-label">Deslocar</span>
+                <span class="tab-desc">Mudar o enquadramento de observação</span>
+              </div>
             </button>
             <button class="track-tab" data-tab="tabM2">
               <span class="tab-num">2</span>
-              <span class="tab-label">Relacionar</span>
-              <span class="tab-desc">Reconhecer conexões</span>
+              <div class="tab-texts">
+                <span class="tab-label">Relacionar</span>
+                <span class="tab-desc">Reconhecer conexões e processos</span>
+              </div>
             </button>
             <button class="track-tab" data-tab="tabM3">
               <span class="tab-num">3</span>
-              <span class="tab-label">Problematizar</span>
-              <span class="tab-desc">Formular questões</span>
+              <div class="tab-texts">
+                <span class="tab-label">Problematizar</span>
+                <span class="tab-desc">Formular questões investigáveis</span>
+              </div>
             </button>
           </div>
 
-          <!-- Conteúdo da Aba M1 -->
+          <!-- ================= ABA M1: DESLOCAR ================= -->
           <div class="tab-content active" id="tabM1">
+            <!-- Área 1 & 2: Texto Original do Protocolo e Pergunta-Guia -->
+            <div class="protocol-box">
+              <div class="protocol-header">
+                <span class="protocol-badge">PROTOCOLO MPRR — MOVIMENTO 1</span>
+                <span class="protocol-rule">Operação de Descoberta: Mudar deliberadamente o ponto de observação</span>
+              </div>
+              <div class="guiding-question">
+                <em>Pergunta-Guia Canônica:</em>
+                <strong>«O que se torna observável ou relevante se a mesma situação for interrogada a partir de outra perspectiva?»</strong>
+              </div>
+              <div class="protocol-product">
+                <strong>Produto Mínimo:</strong> Descrição comparativa do enquadramento inicial e do alternativo. A mudança não pode ficar implícita ou ser identificada somente a posteriori.
+              </div>
+            </div>
+
+            <!-- Área 3: Espaço de Construção Humana -->
             <div class="card-grid">
               <div class="card">
                 <div class="card-header">
@@ -124,33 +160,37 @@
                 </div>
                 <div class="card-body">
                   <label for="m1InitialFw">Ponto de observação habitual do fenômeno:</label>
-                  <textarea id="m1InitialFw" rows="4" placeholder="Ex.: Uma estiagem altera a disponibilidade de forragem e afeta a taxa de lotação e produção animal no ano de 2025..."></textarea>
+                  <textarea id="m1InitialFw" rows="4" placeholder="Descreva o recorte usual a partir do qual o fenômeno é inicialmente observado..."></textarea>
+                  <span class="field-hint">Defina a escala, tempo, unidade de análise e supostos explícitos vigentes.</span>
                 </div>
               </div>
 
               <div class="card highlight-card">
                 <div class="card-header">
                   <h3>Ponto de Observação Deslocado</h3>
-                  <span class="badge-dim" id="m1DimensionBadge">Escala Temporal / Legados</span>
+                  <span class="badge-dim" id="m1DimensionBadge">Dimensão Variada</span>
                 </div>
                 <div class="card-body">
                   <div class="form-row">
                     <label for="m1Dimension">Dimensão do Deslocamento:</label>
                     <select id="m1Dimension">
-                      <option value="TIME_HORIZON">Horizonte Temporal / História de Legados</option>
-                      <option value="SPATIAL_SCALE">Escala Espacial (Parcela &harr; Bacia &harr; Território)</option>
+                      <option value="TIME_HORIZON">Horizonte Temporal / Trajetória Histórica</option>
+                      <option value="SPATIAL_SCALE">Escala Espacial / Delimitação Geográfica</option>
                       <option value="UNIT_OF_ANALYSIS">Unidade de Análise</option>
-                      <option value="OBSERVER_ROLE">Papel do Observador (Técnico &harr; Produtor)</option>
-                      <option value="ORGANIZATION_LEVEL">Nível de Organização Ecológica</option>
-                      <option value="SOCIAL_ACTOR">Atores Sociais Considerados</option>
-                      <option value="DISCIPLINE">Disciplina Mobilizada</option>
+                      <option value="OBSERVER_ROLE">Papel do Observador</option>
+                      <option value="ORGANIZATION_LEVEL">Nível de Organização Sistêmica</option>
+                      <option value="PRIVILEGED_VARIABLE">Variável ou Processo Privilegiado</option>
+                      <option value="DISCIPLINE">Disciplina ou Repertório Teórico Mobilizado</option>
+                      <option value="SOCIAL_ACTOR">Ator Social Cuja Experiência é Considerada</option>
+                      <option value="CUSTOM">Outra Dimensão</option>
                     </select>
                   </div>
+
                   <label for="m1ShiftedFw">Nova perspectiva resultante:</label>
-                  <textarea id="m1ShiftedFw" rows="4" placeholder="Ex.: Examinar a resposta do sistema a partir do histórico de manejo forrageiro e conservação biológica do solo acumulados na década anterior..."></textarea>
+                  <textarea id="m1ShiftedFw" rows="4" placeholder="Descreva o que passa a ser observado a partir do novo enquadramento..."></textarea>
                   
-                  <label for="m1Rationale">Justificativa Metodológica da Mudança (INV-07):</label>
-                  <input type="text" id="m1Rationale" placeholder="Por que essa nova perspectiva é fecunda?">
+                  <label for="m1Rationale">Justificativa Metodológica da Escolha (INV-07):</label>
+                  <input type="text" id="m1Rationale" placeholder="Por que essa nova perspectiva é fecunda para interrogar o fenômeno?">
                 </div>
                 <div class="card-footer">
                   <button class="btn-primary" id="btnSaveM1">Consolidar Deslocamento (M1)</button>
@@ -160,78 +200,138 @@
             </div>
           </div>
 
-          <!-- Conteúdo da Aba M2 -->
+          <!-- ================= ABA M2: RELACIONAR ================= -->
           <div class="tab-content" id="tabM2">
+            <!-- Área 1 & 2: Texto Original do Protocolo e Pergunta-Guia -->
+            <div class="protocol-box">
+              <div class="protocol-header">
+                <span class="protocol-badge">PROTOCOLO MPRR — MOVIMENTO 2</span>
+                <span class="protocol-rule">Operação de Descoberta: Reconhecer conexões e processos relacionais</span>
+              </div>
+              <div class="guiding-question">
+                <em>Pergunta-Guia Canônica:</em>
+                <strong>«Quais relações se tornam mais nítidas e por que a nova perspectiva permite percebê-las?»</strong>
+              </div>
+              <div class="protocol-product">
+                <strong>Produto Mínimo:</strong> Proposição relacional em linguagem clara; explicitação de seus termos e das condições sob as quais faria sentido. Toda relação nasce compulsoriamente como CANDIDATA (INV-01).
+              </div>
+            </div>
+
+            <!-- Área 3: Construtor Relacional Humano -->
             <div class="card">
               <div class="card-header">
-                <h3>Relações Candidatas Identificadas no Novo Enquadramento</h3>
+                <h3>Formulação de Relação Candidata</h3>
                 <span class="provenance-tag candidate">[CANDIDATA]</span>
               </div>
               <div class="card-body">
                 <div class="form-row grid-3">
                   <div>
-                    <label for="m2TermA">Termo A (Processo / Atributo):</label>
-                    <input type="text" id="m2TermA" placeholder="Ex.: Legado de matéria orgânica do solo">
+                    <label for="m2TermA">Termo A (Processo / Atributo / Fator):</label>
+                    <input type="text" id="m2TermA" placeholder="Ex.: Estrutura de incentivos institucionais">
                   </div>
                   <div>
                     <label for="m2RelType">Natureza do Vínculo:</label>
                     <select id="m2RelType">
                       <option value="CONJECTURED_MECHANISM">Mecanismo Causal Conjecturado</option>
-                      <option value="MEDIATION">Mediação Ecológica</option>
+                      <option value="MEDIATION">Mediação de Processo</option>
                       <option value="CONTEXT_DEPENDENCY">Dependência de Contexto</option>
                       <option value="FEEDBACK">Retroalimentação (Feedback)</option>
                       <option value="TEMPORAL_SEQUENCE">Sequência Temporal Assimétrica</option>
                       <option value="POSSIBLE_NECESSARY_CONDITION">Condição Necessária Possível</option>
+                      <option value="ASSOCIATION">Associação / Covariação</option>
                       <option value="HEURISTIC_ANALOGY">Analogia Heurística (Metáfora)</option>
                     </select>
                   </div>
                   <div>
-                    <label for="m2TermB">Termo B (Resposta / Desfecho):</label>
-                    <input type="text" id="m2TermB" placeholder="Ex.: Tempo de recuperação da pastagem">
+                    <label for="m2TermB">Termo B (Efeito / Desfecho / Resposta):</label>
+                    <input type="text" id="m2TermB" placeholder="Ex.: Taxa de adoção tecnológica local">
                   </div>
                 </div>
+
                 <label for="m2Description">Descrição da Relação Candidata (Proibido Fato Demonstrado - INV-01):</label>
-                <textarea id="m2Description" rows="3" placeholder="Descreva por quais mecanismos ou processos os dois termos se conectam sob a nova perspectiva..."></textarea>
+                <textarea id="m2Description" rows="3" placeholder="Explicite as condições sob as quais essa relação faria sentido e por quais processos conectaria A e B..."></textarea>
               </div>
               <div class="card-footer">
                 <button class="btn-primary" id="btnSaveM2">Registrar Relação Candidata (M2)</button>
-                <button class="btn-assist" id="btnAssistRelation">✨ Assistência: Explorar Vínculos</button>
+                <button class="btn-assist" id="btnAssistRelation">✨ Assistência: Propor Relações</button>
               </div>
             </div>
 
-            <!-- Lista de Relações Registradas -->
-            <div class="relations-list" id="relationsList"></div>
+            <!-- Inventário de Relações Registradas -->
+            <div class="inventory-section">
+              <h4 class="inventory-title">Relações Candidatas Catalogadas neste Ciclo:</h4>
+              <div class="relations-list" id="relationsList">
+                <div class="empty-hint">Nenhuma relação candidata registrada ainda. Preencha o formulário acima.</div>
+              </div>
+            </div>
           </div>
 
-          <!-- Conteúdo da Aba M3 -->
+          <!-- ================= ABA M3: PROBLEMATIZAR ================= -->
           <div class="tab-content" id="tabM3">
+            <!-- Área 1 & 2: Texto Original do Protocolo e Pergunta-Guia -->
+            <div class="protocol-box">
+              <div class="protocol-header">
+                <span class="protocol-badge">PROTOCOLO MPRR — MOVIMENTO 3</span>
+                <span class="protocol-rule">Operação de Descoberta: Converter relação em questão investigável</span>
+              </div>
+              <div class="guiding-question">
+                <em>Pergunta-Guia Canônica:</em>
+                <strong>«O que precisaríamos descobrir para saber se essa relação ajuda de fato a explicar o fenômeno?»</strong>
+              </div>
+              <div class="protocol-product">
+                <strong>Produto Mínimo:</strong> Ao menos uma questão clara e uma indicação de como seria possível produzir ou identificar evidências relevantes. Critérios qualitativos: inteligibilidade, pertinência, distintividade, contestabilidade e viabilidade.
+              </div>
+            </div>
+
+            <!-- Área 3: Formulador de Questões -->
             <div class="card">
               <div class="card-header">
-                <h3>Problematização: Formulação de Questão Investigável</h3>
+                <h3>Formulação de Questão e Hipótese Científica</h3>
                 <span class="provenance-tag hypothesis">[HIPÓTESE]</span>
               </div>
               <div class="card-body">
-                <label for="m3Question">Pergunta Científica Candidata:</label>
-                <textarea id="m3Question" rows="3" placeholder="Ex.: Em que medida a taxa de recuperação pós-estiagem é condicionada pela interação entre o manejo forrageiro pretérito e a matéria orgânica do solo?"></textarea>
+                <div class="form-row">
+                  <label for="m3SelectRelation">Vincular à Relação Candidata:</label>
+                  <select id="m3SelectRelation">
+                    <option value="REL-GERAL">Relação Geral do Ciclo</option>
+                  </select>
+                </div>
+
+                <label for="m3Question">Pergunta Científica Investigável:</label>
+                <textarea id="m3Question" rows="3" placeholder="Formule uma questão interrogativa rigorosa e passível de contestação empírica ou teórica..."></textarea>
                 
                 <label for="m3Evidence">Caminho de Evidência e Elucidação Empírica:</label>
-                <input type="text" id="m3Evidence" placeholder="Que dados, amostragem ou séries temporais seriam necessários para responder?">
+                <input type="text" id="m3Evidence" placeholder="Que dados, fontes, séries temporais ou experimentos permitiriam testar a resposta?">
               </div>
               <div class="card-footer">
-                <button class="btn-primary" id="btnSaveM3">Formular Questão & Avançar ao Confronto</button>
+                <button class="btn-primary" id="btnSaveM3">Formular Questão & Concluir M3</button>
                 <button class="btn-assist" id="btnAssistQuestion">✨ Assistência: Sugerir Perguntas</button>
               </div>
             </div>
 
-            <div class="questions-list" id="questionsList"></div>
+            <div class="inventory-section">
+              <h4 class="inventory-title">Questões Científicas Formuladas:</h4>
+              <div class="questions-list" id="questionsList">
+                <div class="empty-hint">Nenhuma questão formulada ainda.</div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <!-- ARENA DE CONFRONTO E CRÍTICA (C4) -->
+        <!-- ================= ARENA DE CONFRONTO E CRÍTICA (C4) ================= -->
         <section id="sectionConfrontation" class="workspace-section">
-          <div class="section-hero confrontation-hero">
-            <div class="hero-title">⚔️ Arena de Confronto e Crítica (Controle 4)</div>
-            <p>O MPRR impõe o contraditório obrigatório (INV-02). Nenhuma hipótese pode ser reposicionada sem o registro de no mínimo <strong>uma Explicação Rival</strong> e no mínimo <strong>um Risco Epistêmico de Invalidação</strong>.</p>
+          <div class="protocol-box confrontation-box">
+            <div class="protocol-header">
+              <span class="protocol-badge alert">CONTROLE CRÍTICO 4 — CONFRONTAR</span>
+              <span class="protocol-rule">Operação de Crítica: Expor a hipótese ao contraditório sistemático</span>
+            </div>
+            <div class="guiding-question">
+              <em>Pergunta-Guia Canônica:</em>
+              <strong>«Que observação, argumento ou condição enfraqueceria nossa proposição?»</strong>
+            </div>
+            <div class="protocol-product">
+              <strong>Produto Mínimo Obrigatório (INV-02):</strong> Pelo menos uma Explicação Rival e um Risco Epistêmico de Invalidação. Vigilância contra falhas previsíveis: analogia excessiva, sobre-interpretação, seleção confirmatória, inflação de perguntas e anacronismo de escala.
+            </div>
           </div>
 
           <div class="confrontation-grid">
@@ -241,8 +341,8 @@
                 <span class="counter-badge" id="rivalCount">0 / 1</span>
               </div>
               <div class="card-body">
-                <p class="card-hint">Que outra causa mais simples, comum ou já consagrada na literatura explicaria os mesmos fatos sem recorrer à sua hipótese?</p>
-                <textarea id="c4RivalText" rows="3" placeholder="Ex.: A recuperação das pastagens decorre de irrigação suplementar ou acesso financeiro a poços artesianos, e não da matéria orgânica acumulada..."></textarea>
+                <p class="card-hint">Que outra causa mais simples, comum ou já estabelecida na literatura explicaria os mesmos fatos sem recorrer à sua hipótese?</p>
+                <textarea id="c4RivalText" rows="3" placeholder="Descreva uma explicação alternativa concorrente..."></textarea>
                 <button class="btn-secondary" id="btnAddRival">+ Adicionar Explicação Rival</button>
                 <div class="items-stack" id="rivalsStack"></div>
               </div>
@@ -255,13 +355,14 @@
               </div>
               <div class="card-body">
                 <p class="card-hint">Que observação, dados adversos ou condição de contorno falseariam a proposição formulada?</p>
-                <textarea id="c4RiskText" rows="3" placeholder="Ex.: Se áreas com solos degradados porém com alto capital de giro apresentarem tempo de recuperação equivalente às áreas conservadas..."></textarea>
+                <textarea id="c4RiskText" rows="3" placeholder="Especifique que dado empírico demonstraria que a hipótese está incorreta..."></textarea>
                 <button class="btn-secondary" id="btnAddRisk">+ Adicionar Condição de Invalidação</button>
                 <div class="items-stack" id="risksStack"></div>
               </div>
             </div>
           </div>
 
+          <!-- Advogado do Diabo Computacional -->
           <div class="card devils-card">
             <div class="card-header">
               <h3>Advogado do Diabo Computacional (IA Local Cética)</h3>
@@ -279,11 +380,20 @@
           </div>
         </section>
 
-        <!-- MESA DE REPOSICIONAMENTO (C5) -->
+        <!-- ================= MESA DE REPOSICIONAMENTO (C5) ================= -->
         <section id="sectionReposition" class="workspace-section">
-          <div class="section-hero reposition-hero">
-            <div class="hero-title">⚖️ Mesa de Reposicionamento (Controle 5)</div>
-            <p>Retornar ao fenômeno e deliberar formalmente: <em>«O que passamos a poder perguntar e o que ainda não temos condições de afirmar?»</em></p>
+          <div class="protocol-box reposition-box">
+            <div class="protocol-header">
+              <span class="protocol-badge success">CONTROLE CRÍTICO 5 — REPOSICIONAR</span>
+              <span class="protocol-rule">Operação de Deliberação: Retornar ao fenômeno e reavaliar o alcance do conhecimento</span>
+            </div>
+            <div class="guiding-question">
+              <em>Pergunta-Guia Canônica:</em>
+              <strong>«O que passamos a poder perguntar e o que ainda não temos condições de afirmar?»</strong>
+            </div>
+            <div class="protocol-product">
+              <strong>Produto Mínimo Obrigatório (INV-08):</strong> Uma decisão formal sobre a hipótese (desenvolver, reformular, suspender, rejeitar, sustentar por evidências) e o próximo teste empírico ou conhecimento requerido.
+            </div>
           </div>
 
           <div class="card">
@@ -296,7 +406,7 @@
                   <input type="radio" name="repositionDecision" value="DEVELOP" checked>
                   <div class="radio-content">
                     <span class="decision-title">DESENVOLVER</span>
-                    <span class="decision-desc">Hipótese promissora, demanda desdobramento e testes operacionais de campo.</span>
+                    <span class="decision-desc">Hipótese promissora, demanda desdobramento e testes operacionais.</span>
                   </div>
                 </label>
                 <label class="radio-card">
@@ -330,11 +440,11 @@
               <div class="form-row grid-2">
                 <div>
                   <label for="c5NextTest">Próximo Teste Empírico (Obrigatório - INV-08):</label>
-                  <input type="text" id="c5NextTest" placeholder="Ex.: Amostragem de matéria orgânica particulada e condutividade hidráulica...">
+                  <input type="text" id="c5NextTest" placeholder="Que observação ou experimento testará a hipótese no mundo real?">
                 </div>
                 <div>
                   <label for="c5ReqKnowledge">Conhecimento Necessário Requerido:</label>
-                  <input type="text" id="c5ReqKnowledge" placeholder="Ex.: Modelagem hidrogeológica de recarga freática...">
+                  <input type="text" id="c5ReqKnowledge" placeholder="Que disciplinas, teorias ou métodos adicionais precisam ser consultados?">
                 </div>
               </div>
             </div>
@@ -344,50 +454,58 @@
           </div>
         </section>
 
-        <!-- TRILHA DE PROVENIÊNCIA E AUDITORIA -->
+        <!-- ================= TRILHA DE PROVENIÊNCIA E AUDITORIA ================= -->
         <section id="sectionProvenance" class="workspace-section">
-          <div class="section-hero">
-            <div class="hero-title">⛓️ Trilha de Proveniência & Merkle-Chain (INV-03)</div>
-            <p>Registro imutável dos eventos da sessão. Cada bloco é encadeado por SHA-256 e selado criptograficamente.</p>
+          <div class="protocol-box">
+            <div class="protocol-header">
+              <span class="protocol-badge">AUDITORIA EPISTÊMICA</span>
+              <span class="protocol-rule">Merkle-Chain Ledger de Eventos Imutáveis (INV-03 & INV-04)</span>
+            </div>
+            <p>Cada alteração de enquadramento, relação registrada, contraponto e deliberação é encadeada com hash SHA-256 no banco de dados SQLite. Qualquer adulteração retroativa quebra a integridade matemática da cadeia.</p>
           </div>
 
           <div class="card">
             <div class="card-header">
-              <h3>Ledger de Eventos da Sessão</h3>
-              <span class="integrity-badge verified" id="merkleBadge">Verificando...</span>
+              <h3>Eventos Auditáveis da Sessão</h3>
+              <span class="integrity-badge verified" id="merkleBadge">Verificado Íntegro</span>
             </div>
             <div class="card-body">
-              <div class="timeline" id="eventTimeline"></div>
+              <div class="timeline" id="eventTimeline">
+                <div class="empty-hint">Nenhum evento registrado ainda.</div>
+              </div>
             </div>
           </div>
         </section>
 
-        <!-- DOSSIÊ E EXPORTAÇÃO -->
+        <!-- ================= DOSSIÊ E EXPORTAÇÃO ================= -->
         <section id="sectionDossier" class="workspace-section">
-          <div class="section-hero">
-            <div class="hero-title">📜 Dossiê Científico e Ficha do MPRR</div>
-            <p>Reprodução integral e fiel da ficha de percurso do protocolo, exportável em múltiplos formatos canônicos.</p>
+          <div class="protocol-box">
+            <div class="protocol-header">
+              <span class="protocol-badge">REGISTRO DE PERCURSO</span>
+              <span class="protocol-rule">Ficha Canônica de Rastreabilidade do MPRR (Tabela 1 do Protocolo)</span>
+            </div>
+            <p>Este documento reproduz integralmente a ficha de aplicação do método para fins de auditoria científica, crítica por pares e reprodutibilidade.</p>
           </div>
 
           <div class="dossier-actions">
             <button class="btn-primary" id="btnExportJson">Exportar .sister-research.json</button>
-            <button class="btn-secondary" id="btnExportHtml">Exportar Relatório HTML</button>
-            <button class="btn-secondary" onclick="window.print()">Imprimir / PDF Científico</button>
+            <button class="btn-secondary" onclick="window.print()">Imprimir / Salvar PDF</button>
           </div>
 
           <div class="dossier-sheet" id="dossierSheet">
             <div class="sheet-header">
-              <h2>FICHA DE APLICAÇÃO — MÉTODO DE PERCEPÇÃO RELACIONAL (MPRR)</h2>
+              <h2>FICHA DE RASTREABILIDADE DO MPRR — REGISTRO DE INVESTIGAÇÃO</h2>
               <div class="sheet-meta">
                 <span><strong>Identificador:</strong> <span id="metaId">--</span></span>
-                <span><strong>Data:</strong> 23 de outubro de 2026</span>
+                <span><strong>Projeto:</strong> <span id="metaProject">--</span></span>
+                <span><strong>Ciclo:</strong> <span id="metaCycle">1</span></span>
                 <span><strong>Protocolo Base:</strong> MPRR-FOUNDATION-001@0.1.0</span>
               </div>
             </div>
 
             <table class="mprr-table">
               <tr>
-                <td class="col-field">Fenômeno e situação</td>
+                <td class="col-field">Objeto e situação</td>
                 <td class="col-val" id="sheetPhenomenon">--</td>
               </tr>
               <tr>
@@ -395,19 +513,19 @@
                 <td class="col-val" id="sheetInitialFw">--</td>
               </tr>
               <tr>
-                <td class="col-field">Perspectiva deslocada</td>
+                <td class="col-field">Deslocamento registrado</td>
                 <td class="col-val" id="sheetShiftedFw">--</td>
               </tr>
               <tr>
-                <td class="col-field">Relações percebidas</td>
+                <td class="col-field">Relações candidatas</td>
                 <td class="col-val" id="sheetRelations">--</td>
               </tr>
               <tr>
-                <td class="col-field">Questão científica candidata</td>
+                <td class="col-field">Questão científica & Hipótese</td>
                 <td class="col-val" id="sheetQuestions">--</td>
               </tr>
               <tr>
-                <td class="col-field">Objeções e alternativas (Confronto)</td>
+                <td class="col-field">Evidências e alternativas (Confronto)</td>
                 <td class="col-val" id="sheetConfrontation">--</td>
               </tr>
               <tr>
@@ -415,7 +533,7 @@
                 <td class="col-val" id="sheetReposition">--</td>
               </tr>
               <tr>
-                <td class="col-field">Proveniência & Autores</td>
+                <td class="col-field">Proveniência & Instrumentos</td>
                 <td class="col-val" id="sheetProvenance">--</td>
               </tr>
             </table>
@@ -430,28 +548,28 @@
       <div class="drawer-header">
         <div class="drawer-title">
           <span>✨ Assistente Socrático</span>
-          <span class="drawer-tag">Ollama Local</span>
+          <span class="drawer-tag" id="drawerModelTag">Ollama Local</span>
         </div>
         <button class="drawer-close" id="btnCloseDrawer">&times;</button>
       </div>
 
       <div class="drawer-body">
         <div class="drawer-prompt-info" id="drawerContextInfo">
-          Contexto: M1 Deslocar perspectivas
+          Contexto de Exploração
         </div>
 
         <div class="suggestion-card" id="suggestionBox" style="display: none;">
           <div class="suggestion-header">
-            <span class="suggestion-model" id="sugModelName">qwen2.5:14b</span>
+            <span class="suggestion-model" id="sugModelName">Modelo</span>
             <span class="suggestion-tag">[ASSISTIDO]</span>
           </div>
           <div class="suggestion-text" id="sugText"></div>
 
           <div class="suggestion-actions">
-            <button class="btn-sug-action accept" id="btnAcceptSug">Aceitar como rascunho</button>
-            <button class="btn-sug-action edit" id="btnEditSug">Editar antes de inserir</button>
-            <button class="btn-sug-action reject" id="btnRejectSug">Rejeitar</button>
-            <button class="btn-sug-action counter" id="btnCounterSug">Pedir Contraponto</button>
+            <button class="btn-sug-action accept" id="btnAcceptSug">✔ Aceitar como rascunho assistido</button>
+            <button class="btn-sug-action edit" id="btnEditSug">✏️ Editar antes de incorporar</button>
+            <button class="btn-sug-action reject" id="btnRejectSug">✖ Rejeitar sugestão</button>
+            <button class="btn-sug-action counter" id="btnCounterSug">⚖️ Solicitar contraponto crítico</button>
           </div>
         </div>
 
@@ -463,32 +581,58 @@
     </aside>
   </div>
 
-  <!-- Modal para Criar Nova Sessão -->
+  <!-- Modal Canônico: Nova Sessão MPRR -->
   <div class="modal-backdrop" id="modalNewSession" style="display: none;">
     <div class="modal-box">
       <div class="modal-header">
-        <h3>Criar Nova Sessão MPRR</h3>
+        <h3>Nova Sessão MPRR — Ficha de Entrada</h3>
         <button class="modal-close" id="btnCloseModal">&times;</button>
       </div>
       <div class="modal-body">
-        <label for="nsTitle">Título da Investigação:</label>
-        <input type="text" id="nsTitle" placeholder="Ex.: Relações ainda não evidentes no Projeto Resiliência">
+        <div class="form-row grid-2">
+          <div>
+            <label for="nsProjectId">Código do Projeto:</label>
+            <input type="text" id="nsProjectId" placeholder="Ex.: PRJ-CLIMA-2026, PRJ-NEURO, PRJ-URBANO...">
+          </div>
+          <div>
+            <label for="nsAuthor">Pesquisador / Autores:</label>
+            <input type="text" id="nsAuthor" value="José Pedro Trindade">
+          </div>
+        </div>
 
-        <label for="nsDoor">Porta de Entrada Prioritária:</label>
-        <select id="nsDoor">
-          <option value="PATH_B_PHENOMENON_TO_KNOWLEDGE">Caminho B: Relação emergente no fenômeno &rarr; Conhecimento necessário</option>
-          <option value="PATH_A_KNOWLEDGE_TO_PHENOMENON">Caminho A: Mobilizar outro conhecimento &rarr; Reinterpretar fenômeno</option>
-        </select>
+        <div class="form-row">
+          <label for="nsTitle">Título da Investigação / Sessão:</label>
+          <input type="text" id="nsTitle" placeholder="Ex.: Dinâmica de recuperação sob choques hidroclimáticos...">
+        </div>
 
-        <label for="nsPhenomenon">Descrição do Fenômeno e Situação:</label>
-        <textarea id="nsPhenomenon" rows="3" placeholder="Descreva os processos e condições observadas..."></textarea>
+        <div class="form-row">
+          <label for="nsDoor">Porta de Entrada (Os Dois Caminhos do MPRR):</label>
+          <select id="nsDoor">
+            <option value="PATH_B_PHENOMENON_TO_KNOWLEDGE">Caminho B: Relação emergente no fenômeno &rarr; Conhecimento necessário</option>
+            <option value="PATH_A_KNOWLEDGE_TO_PHENOMENON">Caminho A: Mobilizar outro conhecimento &rarr; Reinterpretar fenômeno</option>
+          </select>
+          <span class="field-hint">A escolha inicial não restringe o uso posterior do outro caminho durante a sessão.</span>
+        </div>
 
-        <label for="nsAuthor">Pesquisador Responsável:</label>
-        <input type="text" id="nsAuthor" value="José Pedro Trindade">
+        <div class="form-row">
+          <label for="nsPhenomenon">Objeto e Situação (Fenômeno, pergunta inicial e contexto):</label>
+          <textarea id="nsPhenomenon" rows="4" placeholder="Descreva os processos, condições de contorno e o que é atualmente conhecido sobre a situação..."></textarea>
+        </div>
+
+        <div class="form-row grid-2">
+          <div>
+            <label for="nsSpatial">Recorte Espacial / Escala:</label>
+            <input type="text" id="nsSpatial" placeholder="Ex.: Bacia hidrográfica, organismo, rede social...">
+          </div>
+          <div>
+            <label for="nsTemporal">Horizonte Temporal:</label>
+            <input type="text" id="nsTemporal" placeholder="Ex.: Safra anual, série decenal 1990-2025...">
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn-secondary" id="btnCancelModal">Cancelar</button>
-        <button class="btn-primary" id="btnConfirmCreateSession">Iniciar Sessão</button>
+        <button class="btn-primary" id="btnConfirmCreateSession">Iniciar Percurso MPRR</button>
       </div>
     </div>
   </div>
