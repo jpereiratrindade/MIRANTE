@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+bin/
+*.o
+*.a
+*.so
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Database & Runtime
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+data/
+var/
+logs/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Temporary scratch
+tmp/
+scratch/
