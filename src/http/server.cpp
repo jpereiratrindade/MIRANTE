@@ -152,12 +152,112 @@ void HttpServer::Start() {
         res.set_content(j.dump(), "application/json");
     });
 
-    // Helper de Autenticação Opcional (P0)
-    auto check_auth = [](const httplib::Request& req, httplib::Response& res) -> bool {
-        const char* env_token = std::getenv("MIRANTE_API_TOKEN");
-        if (!env_token || std::strlen(env_token) == 0) {
-            return true; // Autenticação desabilitada se nenhum token for configurado no ambiente
+    // =========================================================================
+    // Autenticação SisTer (E-mail + Código de Entrada OTP + Sessões)
+    // =========================================================================
+    svr.Post("/api/auth/otp/request", [this](const httplib::Request& req, httplib::Response& res) {
+        try {
+            json body = json::parse(req.body);
+            std::string email = body.value("email", "");
+            std::string name_hint = body.value("name", "");
+            auto req_res = db_->RequestOtp(email, name_hint);
+            if (!req_res) {
+                res.status = 400;
+                res.set_content(json({{"error", req_res.error()}}).dump(), "application/json");
+                return;
+            }
+            res.set_content(json({
+                {"status", "ok"},
+                {"message", "Código de entrada de uso único gerado com sucesso para " + email},
+                {"dev_code", *req_res} // Disponível para uso em ambiente dev/local
+            }).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
         }
+    });
+
+    svr.Post("/api/auth/otp/verify", [this](const httplib::Request& req, httplib::Response& res) {
+        try {
+            json body = json::parse(req.body);
+            std::string email = body.value("email", "");
+            std::string code = body.value("code", "");
+            auto v_res = db_->VerifyOtp(email, code);
+            if (!v_res) {
+                res.status = 401;
+                res.set_content(json({{"error", v_res.error()}}).dump(), "application/json");
+                return;
+            }
+            res.set_content(json({
+                {"status", "ok"},
+                {"token", v_res->first},
+                {"user", {
+                    {"email", v_res->second.email},
+                    {"name", v_res->second.name},
+                    {"role", v_res->second.role}
+                }}
+            }).dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Get("/api/auth/me", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string token = req.get_header_value("X-Mirante-Token");
+        if (token.empty()) {
+            std::string auth = req.get_header_value("Authorization");
+            if (auth.starts_with("Bearer ")) token = auth.substr(7);
+        }
+        if (token.empty()) {
+            res.set_content(json({{"authenticated", false}}).dump(), "application/json");
+            return;
+        }
+
+        auto au = db_->AuthenticateToken(token);
+        if (au) {
+            res.set_content(json({
+                {"authenticated", true},
+                {"user", {
+                    {"email", au->email},
+                    {"name", au->name},
+                    {"role", au->role}
+                }}
+            }).dump(), "application/json");
+            return;
+        }
+
+        const char* env_token = std::getenv("MIRANTE_API_TOKEN");
+        if (env_token && token == env_token) {
+            res.set_content(json({
+                {"authenticated", true},
+                {"user", {
+                    {"email", "admin@labeco.invalid"},
+                    {"name", "Administrador SisTer"},
+                    {"role", "admin"}
+                }}
+            }).dump(), "application/json");
+            return;
+        }
+
+        res.set_content(json({{"authenticated", false}}).dump(), "application/json");
+    });
+
+    svr.Post("/api/auth/logout", [this](const httplib::Request& req, httplib::Response& res) {
+        std::string token = req.get_header_value("X-Mirante-Token");
+        if (token.empty()) {
+            std::string auth = req.get_header_value("Authorization");
+            if (auth.starts_with("Bearer ")) token = auth.substr(7);
+        }
+        if (!token.empty()) {
+            (void)db_->RevokeToken(token);
+        }
+        res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+    });
+
+    // Helper de Autenticação Unificado SisTer
+    auto check_auth = [this](const httplib::Request& req, httplib::Response& res) -> bool {
+        const char* env_token = std::getenv("MIRANTE_API_TOKEN");
         std::string token = req.get_header_value("X-Mirante-Token");
         if (token.empty()) {
             std::string auth = req.get_header_value("Authorization");
@@ -165,11 +265,21 @@ void HttpServer::Start() {
                 token = auth.substr(7);
             }
         }
-        if (token != env_token) {
+
+        // Se tem token de sessão válido no SQLite, autoriza
+        if (!token.empty()) {
+            auto au = db_->AuthenticateToken(token);
+            if (au) return true;
+        }
+
+        // Se tem Master Token configurado no ambiente
+        if (env_token && std::strlen(env_token) > 0) {
+            if (token == env_token) return true;
             res.status = 401;
-            res.set_content(json({{"error", "Acesso não autorizado: token ausente ou inválido."}}).dump(), "application/json");
+            res.set_content(json({{"error", "Acesso não autorizado: token de sessão ou mestre ausente ou inválido."}}).dump(), "application/json");
             return false;
         }
+
         return true;
     };
 

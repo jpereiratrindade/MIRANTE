@@ -1126,3 +1126,118 @@ button {
   font-size: 13px;
 }
 
+/* ==========================================================================
+   UTILITÁRIOS E AUTENTICAÇÃO SISTER
+   ========================================================================== */
+.hidden {
+  display: none !important;
+}
+
+.auth-area {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.btn-auth-login {
+  background: linear-gradient(135deg, var(--sister-blue) 0%, var(--sister-blue-hover) 100%);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.btn-auth-login:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 2px 6px rgba(26, 125, 196, 0.4);
+}
+
+.user-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sister-navy-surface);
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.user-avatar {
+  background: var(--sister-teal);
+  color: white;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.user-name {
+  color: #edf2f8;
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-auth-logout {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+  transition: color 0.15s;
+}
+
+.btn-auth-logout:hover {
+  color: var(--sister-red);
+}
+
+.auth-card {
+  max-width: 480px !important;
+}
+
+.auth-desc {
+  font-size: 13px;
+  color: var(--sister-text-muted);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.auth-sent-notice {
+  background: #e8f4fd;
+  border: 1px solid #b8daf8;
+  color: var(--sister-navy-deep);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.auth-feedback {
+  margin-top: 12px;
+  font-size: 12px;
+  min-height: 18px;
+}
+
+.auth-feedback.error {
+  color: var(--sister-red);
+}
+
+.auth-feedback.success {
+  color: var(--sister-green);
+}
+

@@ -1,11 +1,16 @@
 #include "mirante/storage/database.hpp"
 #include <openssl/evp.h>
 #include <openssl/sha.h>
+#include <openssl/rand.h>
 #include <nlohmann/json.hpp>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
+#include <iostream>
 #include <chrono>
 #include <format>
+#include <cstdlib>
+#include <algorithm>
 
 using json = nlohmann::json;
 
@@ -89,6 +94,34 @@ std::expected<void, std::string> Database::RunMigrations() {
         );
 
         CREATE INDEX IF NOT EXISTS idx_events_session_seq ON mprr_session_events(session_id, sequence_number);
+
+        -- Autenticação SisTer (E-mail + Código OTP + Sessões)
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            role TEXT DEFAULT 'researcher',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_login_at DATETIME
+        );
+
+        CREATE TABLE IF NOT EXISTS otps (
+            email TEXT PRIMARY KEY,
+            code TEXT NOT NULL,
+            expires_at INTEGER NOT NULL,
+            attempts INTEGER DEFAULT 0,
+            requested_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            FOREIGN KEY (email) REFERENCES users(email)
+        );
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token, expires_at);
     )";
 
     char* err_msg = nullptr;
@@ -750,6 +783,315 @@ std::expected<bool, std::string> Database::VerifyLedgerIntegrity(const std::stri
 
     sqlite3_finalize(stmt);
     return true; // Cadeia íntegra!
+}
+
+std::string Database::RandomDigits(size_t count) {
+    std::string out;
+    while (out.size() < count) {
+        unsigned char buf[16];
+        if (RAND_bytes(buf, sizeof(buf)) != 1) {
+            return "123456";
+        }
+        for (size_t i = 0; i < sizeof(buf) && out.size() < count; ++i) {
+            if (buf[i] < 250) {
+                out += static_cast<char>('0' + (buf[i] % 10));
+            }
+        }
+    }
+    return out;
+}
+
+std::string Database::RandomHex(size_t bytes) {
+    std::vector<unsigned char> buf(bytes);
+    if (RAND_bytes(buf.data(), bytes) != 1) return "";
+    std::ostringstream os;
+    for (unsigned char c : buf) {
+        os << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(c);
+    }
+    return os.str();
+}
+
+bool Database::SendOtpEmail(const std::string& to_email, const std::string& code, std::string& err_out) {
+    const char* smtp_host = std::getenv("MIRANTE_SMTP_HOST");
+    if (!smtp_host || std::strlen(smtp_host) == 0) {
+        std::cout << "\n========================================================" << std::endl;
+        std::cout << " [AUTENTICAÇÃO SISTER] Código de Entrada para: " << to_email << std::endl;
+        std::cout << " CÓDIGO TEMPORÁRIO (OTP): >>> " << code << " <<<" << std::endl;
+        std::cout << " Válido por 10 minutos (Ambiente Local / Dev)" << std::endl;
+        std::cout << "========================================================\n" << std::endl;
+        return true;
+    }
+
+    std::string port = std::getenv("MIRANTE_SMTP_PORT") ? std::getenv("MIRANTE_SMTP_PORT") : "587";
+    std::string user = std::getenv("MIRANTE_SMTP_USER") ? std::getenv("MIRANTE_SMTP_USER") : "";
+    std::string pass = std::getenv("MIRANTE_SMTP_PASS") ? std::getenv("MIRANTE_SMTP_PASS") : "";
+    std::string from = std::getenv("MIRANTE_SMTP_FROM") ? std::getenv("MIRANTE_SMTP_FROM") : "mprr@labeco.invalid";
+
+    std::string temp_file = std::format("/tmp/mirante-otp-{}.eml", RandomHex(6));
+    {
+        std::ofstream ofs(temp_file);
+        if (!ofs) { err_out = "Erro ao criar arquivo de e-mail temporário"; return false; }
+        ofs << "From: \"SisTer MIRANTE\" <" << from << ">\r\n"
+            << "To: <" << to_email << ">\r\n"
+            << "Subject: MIRANTE - Codigo de Entrada: " << code << "\r\n"
+            << "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+            << "Olá!\r\n\r\n"
+            << "Você solicitou acesso ao MIRANTE (Ecossistema SisTer / LABECO).\r\n"
+            << "Seu código temporário de uso único é:\r\n\r\n"
+            << "    " << code << "\r\n\r\n"
+            << "Este código é válido por 10 minutos.\r\n"
+            << "Se você não solicitou este acesso, desconsidere esta mensagem.\r\n\r\n"
+            << "--\r\n"
+            << "MIRANTE · Experiência Assistida de Percepção Relacional\r\n"
+            << "Sempre pronto. Sempre incompleto!\r\n";
+    }
+
+    std::string clean_pass = pass;
+    clean_pass.erase(std::remove_if(clean_pass.begin(), clean_pass.end(), [](unsigned char c) { return std::isspace(c); }), clean_pass.end());
+
+    std::string cmd = std::format(
+        "curl --silent --show-error --connect-timeout 10 --max-time 20 --url 'smtp://{}:{}' "
+        "--mail-from '{}' --mail-rcpt '{}' --upload-file '{}' --ssl-reqd --user '{}:{}' 2>&1",
+        smtp_host, port, from, to_email, temp_file, user, clean_pass
+    );
+
+    FILE* p = popen(cmd.c_str(), "r");
+    std::string curl_out;
+    if (p) {
+        char buf[512];
+        while (fgets(buf, sizeof(buf), p)) curl_out += buf;
+        int st = pclose(p);
+        std::filesystem::remove(temp_file);
+        if (st != 0) {
+            err_out = "Falha no envio SMTP: " + curl_out;
+            return false;
+        }
+    } else {
+        std::filesystem::remove(temp_file);
+        err_out = "Não foi possível disparar curl para SMTP";
+        return false;
+    }
+    return true;
+}
+
+std::expected<std::string, std::string> Database::RequestOtp(const std::string& raw_email, const std::string& name_hint) {
+    std::string email = raw_email;
+    email.erase(0, email.find_first_not_of(" \t\r\n"));
+    email.erase(email.find_last_not_of(" \t\r\n") + 1);
+    std::transform(email.begin(), email.end(), email.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    size_t at = email.find('@');
+    if (at == std::string::npos || at == 0 || at + 3 > email.size() || email.find('.', at + 2) == std::string::npos) {
+        return std::unexpected("Endereço de e-mail inválido.");
+    }
+
+    std::string code = RandomDigits(6);
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    int64_t expires_at = now + 600; // 10 minutos
+
+    std::string default_name = name_hint.empty() ? email.substr(0, at) : name_hint;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!db_) return std::unexpected("Banco de dados não aberto");
+
+        // Cadastra ou atualiza usuário
+        sqlite3_stmt* u_stmt = nullptr;
+        const char* u_sql = "INSERT OR IGNORE INTO users (email, name, role) VALUES (?, ?, 'researcher');";
+        if (sqlite3_prepare_v2(db_, u_sql, -1, &u_stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(u_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+            sqlite3_bind_text(u_stmt, 2, default_name.c_str(), -1, SQLITE_STATIC);
+            sqlite3_step(u_stmt);
+            sqlite3_finalize(u_stmt);
+        }
+
+        // Grava OTP
+        sqlite3_stmt* o_stmt = nullptr;
+        const char* o_sql = "INSERT OR REPLACE INTO otps (email, code, expires_at, attempts, requested_at) VALUES (?, ?, ?, 0, ?);";
+        if (sqlite3_prepare_v2(db_, o_sql, -1, &o_stmt, nullptr) != SQLITE_OK) {
+            return std::unexpected(sqlite3_errmsg(db_));
+        }
+
+        sqlite3_bind_text(o_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_text(o_stmt, 2, code.c_str(), -1, SQLITE_STATIC);
+        sqlite3_bind_int64(o_stmt, 3, expires_at);
+        sqlite3_bind_int64(o_stmt, 4, now);
+        int rc = sqlite3_step(o_stmt);
+        sqlite3_finalize(o_stmt);
+
+        if (rc != SQLITE_DONE) {
+            return std::unexpected("Falha ao registrar código de autenticação: " + std::string(sqlite3_errmsg(db_)));
+        }
+    }
+
+    std::string smtp_err;
+    if (!SendOtpEmail(email, code, smtp_err)) {
+        return std::unexpected("Erro no envio do e-mail com código: " + smtp_err);
+    }
+
+    return code; // Retornado para uso local/dev e confirmação
+}
+
+std::expected<std::pair<std::string, Database::AuthUser>, std::string> Database::VerifyOtp(const std::string& raw_email, const std::string& raw_code) {
+    std::string email = raw_email;
+    email.erase(0, email.find_first_not_of(" \t\r\n"));
+    email.erase(email.find_last_not_of(" \t\r\n") + 1);
+    std::transform(email.begin(), email.end(), email.begin(), [](unsigned char c) { return std::tolower(c); });
+
+    std::string code = raw_code;
+    code.erase(0, code.find_first_not_of(" \t\r\n"));
+    code.erase(code.find_last_not_of(" \t\r\n") + 1);
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    // Busca OTP
+    const char* o_sql = "SELECT code, expires_at, attempts FROM otps WHERE email = ?;";
+    sqlite3_stmt* o_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, o_sql, -1, &o_stmt, nullptr) != SQLITE_OK) {
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+    sqlite3_bind_text(o_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(o_stmt) != SQLITE_ROW) {
+        sqlite3_finalize(o_stmt);
+        return std::unexpected("Nenhum código ativo encontrado para este e-mail. Solicite um novo código.");
+    }
+
+    std::string stored_code = reinterpret_cast<const char*>(sqlite3_column_text(o_stmt, 0));
+    int64_t expires_at = sqlite3_column_int64(o_stmt, 1);
+    int attempts = sqlite3_column_int(o_stmt, 2);
+    sqlite3_finalize(o_stmt);
+
+    if (now > expires_at) {
+        return std::unexpected("Código de entrada expirado. Solicite um novo código.");
+    }
+
+    if (attempts >= 5) {
+        return std::unexpected("Número excessivo de tentativas incorretas. Solicite um novo código.");
+    }
+
+    if (code != stored_code) {
+        // Incrementa tentativas
+        sqlite3_stmt* inc_stmt = nullptr;
+        if (sqlite3_prepare_v2(db_, "UPDATE otps SET attempts = attempts + 1 WHERE email = ?;", -1, &inc_stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(inc_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+            sqlite3_step(inc_stmt);
+            sqlite3_finalize(inc_stmt);
+        }
+        return std::unexpected("Código de entrada incorreto.");
+    }
+
+    // Código correto! Remove da tabela otps
+    sqlite3_stmt* del_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "DELETE FROM otps WHERE email = ?;", -1, &del_stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(del_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(del_stmt);
+        sqlite3_finalize(del_stmt);
+    }
+
+    // Busca dados do usuário
+    std::string user_name = email;
+    std::string user_role = "researcher";
+    sqlite3_stmt* u_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT name, role FROM users WHERE email = ?;", -1, &u_stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(u_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+        if (sqlite3_step(u_stmt) == SQLITE_ROW) {
+            const char* n = reinterpret_cast<const char*>(sqlite3_column_text(u_stmt, 0));
+            const char* r = reinterpret_cast<const char*>(sqlite3_column_text(u_stmt, 1));
+            if (n) user_name = n;
+            if (r) user_role = r;
+        }
+        sqlite3_finalize(u_stmt);
+    }
+
+    // Atualiza last_login_at
+    sqlite3_stmt* up_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE email = ?;", -1, &up_stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(up_stmt, 1, email.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(up_stmt);
+        sqlite3_finalize(up_stmt);
+    }
+
+    // Cria Token de Sessão (30 dias)
+    std::string token = RandomHex(32);
+    int64_t session_exp = now + (86400 * 30);
+
+    sqlite3_stmt* s_stmt = nullptr;
+    const char* s_sql = "INSERT INTO auth_sessions (token, email, name, role, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?);";
+    if (sqlite3_prepare_v2(db_, s_sql, -1, &s_stmt, nullptr) != SQLITE_OK) {
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+
+    sqlite3_bind_text(s_stmt, 1, token.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(s_stmt, 2, email.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(s_stmt, 3, user_name.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(s_stmt, 4, user_role.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(s_stmt, 5, now);
+    sqlite3_bind_int64(s_stmt, 6, session_exp);
+    int s_rc = sqlite3_step(s_stmt);
+    sqlite3_finalize(s_stmt);
+
+    if (s_rc != SQLITE_DONE) {
+        return std::unexpected("Falha ao gravar sessão de usuário: " + std::string(sqlite3_errmsg(db_)));
+    }
+
+    AuthUser au{
+        .authenticated = true,
+        .email = email,
+        .name = user_name,
+        .role = user_role
+    };
+
+    return std::make_pair(token, au);
+}
+
+std::expected<Database::AuthUser, std::string> Database::AuthenticateToken(const std::string& token) {
+    if (token.empty()) return std::unexpected("Token ausente");
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    int64_t now = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+    const char* sql = "SELECT email, name, role FROM auth_sessions WHERE token = ? AND expires_at > ?;";
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+
+    sqlite3_bind_text(stmt, 1, token.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(stmt, 2, now);
+
+    if (sqlite3_step(stmt) != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return std::unexpected("Sessão inválida ou expirada");
+    }
+
+    AuthUser au{
+        .authenticated = true,
+        .email = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)),
+        .name = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)),
+        .role = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2))
+    };
+
+    sqlite3_finalize(stmt);
+    return au;
+}
+
+std::expected<void, std::string> Database::RevokeToken(const std::string& token) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, "DELETE FROM auth_sessions WHERE token = ?;", -1, &stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, token.c_str(), -1, SQLITE_STATIC);
+        sqlite3_step(stmt);
+        sqlite3_finalize(stmt);
+    }
+    return {};
 }
 
 } // namespace mirante::storage

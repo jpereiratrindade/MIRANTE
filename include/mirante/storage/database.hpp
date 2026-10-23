@@ -45,8 +45,23 @@ public:
     std::expected<std::vector<domain::SessionEvent>, std::string> GetEventLedger(const std::string& session_id);
     std::expected<bool, std::string> VerifyLedgerIntegrity(const std::string& session_id);
 
-    // Utilitário Criptográfico
+    // Autenticação SisTer (E-mail + Código OTP + Sessões Passwordless)
+    struct AuthUser {
+        bool authenticated{false};
+        std::string email;
+        std::string name;
+        std::string role{"researcher"};
+    };
+
+    std::expected<std::string, std::string> RequestOtp(const std::string& email, const std::string& name_hint = "");
+    std::expected<std::pair<std::string, AuthUser>, std::string> VerifyOtp(const std::string& email, const std::string& code);
+    std::expected<AuthUser, std::string> AuthenticateToken(const std::string& token);
+    std::expected<void, std::string> RevokeToken(const std::string& token);
+
+    // Utilitários Criptográficos e Aleatoriedade Segura
     static std::string Sha256(const std::string& input);
+    static std::string RandomDigits(size_t count = 6);
+    static std::string RandomHex(size_t bytes = 16);
 
 private:
     sqlite3* db_{nullptr};
@@ -54,6 +69,7 @@ private:
 
     std::expected<void, std::string> RunMigrations();
     std::string GetLastEventHash(const std::string& session_id);
+    static bool SendOtpEmail(const std::string& to_email, const std::string& code, std::string& err_out);
 };
 
 } // namespace mirante::storage

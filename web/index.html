@@ -87,6 +87,16 @@
             <span class="pill-icon">🛡️</span> Integridade Procedimental Ativa
           </div>
           <div class="cycle-pill" id="cycleBadge">Ciclo 1</div>
+          
+          <!-- Área de Autenticação SisTer -->
+          <div class="auth-area" id="authArea">
+            <button class="btn-auth-login" id="btnOpenLoginModal">🔑 Entrar</button>
+            <div class="user-badge hidden" id="userBadge">
+              <span class="user-avatar" id="userAvatar">🔬</span>
+              <span class="user-name" id="userName">Pesquisador</span>
+              <button class="btn-auth-logout" id="btnLogout" title="Encerrar sessão">Sair</button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -633,6 +643,49 @@
       <div class="modal-footer">
         <button class="btn-secondary" id="btnCancelModal">Cancelar</button>
         <button class="btn-primary" id="btnConfirmCreateSession">Iniciar Percurso MPRR</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Autenticação SisTer (E-mail + Código OTP) -->
+  <div class="modal-overlay hidden" id="modalAuth">
+    <div class="modal-card auth-card">
+      <div class="modal-header">
+        <h3>Acesso ao MIRANTE — Ecossistema SisTer</h3>
+        <button class="btn-close-modal" id="btnCloseAuthModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="auth-desc">Autenticação soberana por e-mail com código de entrada temporário (sem senhas estáticas expostas).</p>
+        
+        <div id="authStepEmail">
+          <div class="form-row">
+            <label for="inputAuthEmail">E-mail do Pesquisador:</label>
+            <input type="email" id="inputAuthEmail" placeholder="pesquisador@instituicao.br ou admin@labeco.invalid" class="form-control">
+          </div>
+          <div class="form-row">
+            <label for="inputAuthName">Nome / Apresentação (opcional):</label>
+            <input type="text" id="inputAuthName" placeholder="Dr. José Pedro" class="form-control">
+          </div>
+          <div class="modal-footer" style="padding: 1rem 0 0 0;">
+            <button class="btn-primary" id="btnSendOtp">Enviar Código de Entrada</button>
+          </div>
+        </div>
+
+        <div id="authStepCode" class="hidden">
+          <div class="auth-sent-notice" id="authSentNotice">
+            Código de uso único enviado para: <strong id="authTargetEmail"></strong>
+          </div>
+          <div class="form-row">
+            <label for="inputAuthCode">Código de 6 dígitos:</label>
+            <input type="text" id="inputAuthCode" maxlength="6" placeholder="Ex: 849201" class="form-control auth-code-input" style="font-size: 1.4rem; letter-spacing: 0.25em; text-align: center; font-family: 'JetBrains Mono', monospace;">
+          </div>
+          <div class="modal-footer" style="padding: 1rem 0 0 0; justify-content: space-between;">
+            <button class="btn-secondary" id="btnBackToEmail">&larr; Alterar E-mail</button>
+            <button class="btn-primary" id="btnVerifyOtp">Confirmar e Entrar</button>
+          </div>
+        </div>
+
+        <div class="auth-feedback" id="authFeedback"></div>
       </div>
     </div>
   </div>

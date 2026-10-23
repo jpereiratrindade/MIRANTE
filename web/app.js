@@ -9,8 +9,20 @@ document.addEventListener('DOMContentLoaded', () => {
   let pendingAssistantText = "";
   let pendingAssistantMovement = "M1";
   let availableModels = [];
+  let currentUser = null;
 
   const API_BASE = "";
+
+  // Helper de Requisição Autenticada SisTer
+  function authFetch(url, options = {}) {
+    const token = localStorage.getItem('mirante_auth_token');
+    options.headers = options.headers || {};
+    if (token) {
+      options.headers['Authorization'] = `Bearer ${token}`;
+      options.headers['X-Mirante-Token'] = token;
+    }
+    return fetch(url, options);
+  }
 
   // Elementos Principais
   const sessionBreadcrumb = document.getElementById('sessionBreadcrumb');
@@ -20,6 +32,178 @@ document.addEventListener('DOMContentLoaded', () => {
   const doorPill = document.getElementById('doorPill');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
+
+  // Elementos de Autenticação SisTer
+  const btnOpenLoginModal = document.getElementById('btnOpenLoginModal');
+  const userBadge = document.getElementById('userBadge');
+  const userAvatar = document.getElementById('userAvatar');
+  const userName = document.getElementById('userName');
+  const btnLogout = document.getElementById('btnLogout');
+  const modalAuth = document.getElementById('modalAuth');
+  const btnCloseAuthModal = document.getElementById('btnCloseAuthModal');
+  const authStepEmail = document.getElementById('authStepEmail');
+  const authStepCode = document.getElementById('authStepCode');
+  const inputAuthEmail = document.getElementById('inputAuthEmail');
+  const inputAuthName = document.getElementById('inputAuthName');
+  const inputAuthCode = document.getElementById('inputAuthCode');
+  const btnSendOtp = document.getElementById('btnSendOtp');
+  const btnVerifyOtp = document.getElementById('btnVerifyOtp');
+  const btnBackToEmail = document.getElementById('btnBackToEmail');
+  const authSentNotice = document.getElementById('authSentNotice');
+  const authTargetEmail = document.getElementById('authTargetEmail');
+  const authFeedback = document.getElementById('authFeedback');
+
+  // Gestão de Sessão do Usuário
+  async function checkAuthStatus() {
+    const token = localStorage.getItem('mirante_auth_token');
+    if (!token) {
+      renderLoggedOut();
+      return;
+    }
+    try {
+      const res = await authFetch(`${API_BASE}/api/auth/me`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          currentUser = data.user;
+          renderLoggedIn(currentUser);
+          return;
+        }
+      }
+      renderLoggedOut();
+    } catch {
+      renderLoggedOut();
+    }
+  }
+
+  function renderLoggedIn(user) {
+    btnOpenLoginModal.classList.add('hidden');
+    userBadge.classList.remove('hidden');
+    userName.textContent = user.name || user.email;
+    const initials = (user.name || user.email).substring(0, 2).toUpperCase();
+    userAvatar.textContent = initials;
+
+    // Atualiza nome padrão em formulários
+    const authorInputs = ['nsAuthor', 'author_shift', 'author_rel', 'author_q', 'author_repo'];
+    authorInputs.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && !el.value) el.value = user.name || user.email;
+    });
+  }
+
+  function renderLoggedOut() {
+    currentUser = null;
+    localStorage.removeItem('mirante_auth_token');
+    btnOpenLoginModal.classList.remove('hidden');
+    userBadge.classList.add('hidden');
+  }
+
+  // Modais de Autenticação
+  btnOpenLoginModal.addEventListener('click', () => {
+    modalAuth.classList.remove('hidden');
+    authStepEmail.classList.remove('hidden');
+    authStepCode.classList.add('hidden');
+    authFeedback.textContent = '';
+    inputAuthEmail.focus();
+  });
+
+  function closeAuthModal() {
+    modalAuth.classList.add('hidden');
+    authFeedback.textContent = '';
+  }
+
+  btnCloseAuthModal.addEventListener('click', closeAuthModal);
+  modalAuth.addEventListener('click', (e) => {
+    if (e.target === modalAuth) closeAuthModal();
+  });
+
+  btnBackToEmail.addEventListener('click', () => {
+    authStepEmail.classList.remove('hidden');
+    authStepCode.classList.add('hidden');
+    authFeedback.textContent = '';
+    inputAuthEmail.focus();
+  });
+
+  btnSendOtp.addEventListener('click', async () => {
+    const email = inputAuthEmail.value.trim();
+    const name = inputAuthName.value.trim();
+    if (!email || !email.includes('@')) {
+      authFeedback.className = 'auth-feedback error';
+      authFeedback.textContent = 'Por favor, informe um endereço de e-mail válido.';
+      return;
+    }
+
+    btnSendOtp.disabled = true;
+    btnSendOtp.textContent = 'Gerando código...';
+    authFeedback.textContent = '';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, name})
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao solicitar código.');
+
+      authTargetEmail.textContent = email;
+      authStepEmail.classList.add('hidden');
+      authStepCode.classList.remove('hidden');
+      inputAuthCode.value = '';
+      inputAuthCode.focus();
+
+      if (data.dev_code) {
+        authFeedback.className = 'auth-feedback success';
+        authFeedback.textContent = `Código de entrada gerado: ${data.dev_code} (Ambiente Local/Dev)`;
+      }
+    } catch (err) {
+      authFeedback.className = 'auth-feedback error';
+      authFeedback.textContent = err.message;
+    } finally {
+      btnSendOtp.disabled = false;
+      btnSendOtp.textContent = 'Enviar Código de Entrada';
+    }
+  });
+
+  btnVerifyOtp.addEventListener('click', async () => {
+    const email = inputAuthEmail.value.trim();
+    const code = inputAuthCode.value.trim();
+    if (!code || code.length < 6) {
+      authFeedback.className = 'auth-feedback error';
+      authFeedback.textContent = 'Informe o código de 6 dígitos recebido.';
+      return;
+    }
+
+    btnVerifyOtp.disabled = true;
+    btnVerifyOtp.textContent = 'Verificando...';
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, code})
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Código incorreto ou expirado.');
+
+      localStorage.setItem('mirante_auth_token', data.token);
+      renderLoggedIn(data.user);
+      closeAuthModal();
+    } catch (err) {
+      authFeedback.className = 'auth-feedback error';
+      authFeedback.textContent = err.message;
+    } finally {
+      btnVerifyOtp.disabled = false;
+      btnVerifyOtp.textContent = 'Confirmar e Entrar';
+    }
+  });
+
+  btnLogout.addEventListener('click', async () => {
+    try {
+      await authFetch(`${API_BASE}/api/auth/logout`, {method: 'POST'});
+    } catch {}
+    renderLoggedOut();
+  });
 
   // Modal de Nova Sessão
   const modalNewSession = document.getElementById('modalNewSession');
@@ -31,6 +215,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Abre Modal
   btnOpenNewSessionModal.addEventListener('click', () => {
     modalNewSession.style.display = 'flex';
+    if (currentUser) {
+      const authInput = document.getElementById('nsAuthor');
+      if (authInput && !authInput.value) {
+        authInput.value = currentUser.name || currentUser.email;
+      }
+    }
     document.getElementById('nsProjectId').focus();
   });
 
@@ -50,7 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const title = document.getElementById('nsTitle').value.trim() || "Nova Investigação MPRR";
     const door = document.getElementById('nsDoor').value;
     const phenomenon = document.getElementById('nsPhenomenon').value.trim();
-    const author = document.getElementById('nsAuthor').value.trim() || "Pesquisador";
+    const author = document.getElementById('nsAuthor').value.trim() || (currentUser ? (currentUser.name || currentUser.email) : "Pesquisador");
     const spatial = document.getElementById('nsSpatial').value.trim();
     const temporal = document.getElementById('nsTemporal').value.trim();
 
@@ -71,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/api/sessions`, {
+      const res = await authFetch(`${API_BASE}/api/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -174,7 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inicialização
   async function init() {
     try {
-      const hRes = await fetch(`${API_BASE}/api/health`);
+      await checkAuthStatus();
+      const hRes = await authFetch(`${API_BASE}/api/health`);
       if (hRes.ok) {
         const hData = await hRes.json();
         statusDot.classList.add('online');
@@ -182,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // Carregar lista de modelos locais filtrando embeddings
-      const mRes = await fetch(`${API_BASE}/api/models`);
+      const mRes = await authFetch(`${API_BASE}/api/models`);
       if (mRes.ok) {
         availableModels = await mRes.json();
         selectLocalModel.innerHTML = "";
@@ -213,7 +404,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Carregar lista de sessões no dropdown
   async function refreshSessionDropdown(selectId = null) {
-    const res = await fetch(`${API_BASE}/api/sessions`);
+    const res = await authFetch(`${API_BASE}/api/sessions`);
     if (!res.ok) return;
     const sessions = await res.json();
 
@@ -246,7 +437,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Alternar Sessão Ativa
   async function switchSession(sid) {
     activeSessionId = sid;
-    const res = await fetch(`${API_BASE}/api/sessions/${sid}`);
+    const res = await authFetch(`${API_BASE}/api/sessions/${sid}`);
     if (!res.ok) return;
 
     currentSessionData = await res.json();
@@ -343,8 +534,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const shiftedFw = document.getElementById('m1ShiftedFw').value.trim();
     const rationale = document.getElementById('m1Rationale').value.trim();
     const dimension = document.getElementById('m1Dimension').value;
+    const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/shift`, {
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/shift`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -352,7 +544,7 @@ document.addEventListener('DOMContentLoaded', () => {
         shifted_framework: shiftedFw,
         rationale: rationale,
         dimension: dimension,
-        author: "Pesquisador",
+        author: author,
         is_assisted: false
       })
     });
@@ -372,8 +564,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const termB = document.getElementById('m2TermB').value.trim();
     const desc = document.getElementById('m2Description').value.trim();
     const relType = document.getElementById('m2RelType').value;
+    const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/relation`, {
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/relation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -381,7 +574,7 @@ document.addEventListener('DOMContentLoaded', () => {
         term_b: termB,
         description: desc,
         rel_type: relType,
-        author: "Pesquisador",
+        author: author,
         is_assisted: false
       })
     });
@@ -403,15 +596,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const qtext = document.getElementById('m3Question').value.trim();
     const evPath = document.getElementById('m3Evidence').value.trim();
     const relId = document.getElementById('m3SelectRelation').value;
+    const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/question`, {
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/question`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         relation_id: relId,
         question_text: qtext,
         evidence_path: evPath,
-        author: "Pesquisador",
+        author: author,
         is_assisted: false
       })
     });
@@ -471,7 +665,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Concluir Confronto
   document.getElementById('btnConcludeConfrontation').addEventListener('click', async () => {
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/confront`, {
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/confront`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -495,8 +689,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const just = document.getElementById('c5Justification').value.trim();
     const nextTest = document.getElementById('c5NextTest').value.trim();
     const reqKnowledge = document.getElementById('c5ReqKnowledge').value.trim();
+    const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
 
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}/reposition`, {
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/reposition`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -505,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
         next_empirical_test: nextTest,
         required_knowledge: reqKnowledge,
         resumption_criteria: (decision === 'SUSPEND') ? "Aguardando novos dados e evidências para reabertura da análise" : "",
-        author: "Pesquisador"
+        author: author
       })
     });
 
@@ -524,7 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerLoading.style.display = 'flex';
 
     try {
-      const res = await fetch(`${API_BASE}/api/assist/shift`, {
+      const res = await authFetch(`${API_BASE}/api/assist/shift`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -554,7 +749,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerLoading.style.display = 'flex';
 
     try {
-      const res = await fetch(`${API_BASE}/api/assist/relation`, {
+      const res = await authFetch(`${API_BASE}/api/assist/relation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -584,7 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawerLoading.style.display = 'flex';
 
     try {
-      const res = await fetch(`${API_BASE}/api/assist/question`, {
+      const res = await authFetch(`${API_BASE}/api/assist/question`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -617,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ? currentSessionData.questions[0].text 
         : "Proposição relacional em análise";
 
-      const res = await fetch(`${API_BASE}/api/assist/confront`, {
+      const res = await authFetch(`${API_BASE}/api/assist/confront`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -672,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
     suggestionBox.style.display = 'none';
 
     try {
-      const res = await fetch(`${API_BASE}/api/assist/confront`, {
+      const res = await authFetch(`${API_BASE}/api/assist/confront`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -700,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
     timeline.innerHTML = `<div class="empty-hint">Consultando ledger criptográfico...</div>`;
 
     try {
-      const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}`);
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}`);
       if (!res.ok) return;
       const s = await res.json();
 
@@ -735,7 +930,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Renderizar Dossiê
   async function renderDossier() {
     if (!activeSessionId) return;
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}`);
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}`);
     if (!res.ok) return;
     const s = await res.json();
 
@@ -773,7 +968,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Exportar .sister-research.json
   document.getElementById('btnExportJson').addEventListener('click', async () => {
-    const res = await fetch(`${API_BASE}/api/sessions/${activeSessionId}`);
+    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}`);
     const s = await res.json();
     const manifest = {
       document_id: `MPRR-${s.session_id}`,
