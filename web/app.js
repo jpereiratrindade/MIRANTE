@@ -340,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Abre Modal
   btnOpenNewSessionModal.addEventListener('click', () => {
-    modalNewSession.style.display = 'flex';
+    modalNewSession.classList.remove('hidden');
     if (currentUser) {
       const authInput = document.getElementById('nsAuthor');
       if (authInput && !authInput.value) {
@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Fecha Modal
   function closeModal() {
-    modalNewSession.style.display = 'none';
+    modalNewSession.classList.add('hidden');
   }
   btnCloseModal.addEventListener('click', closeModal);
   btnCancelModal.addEventListener('click', closeModal);
@@ -460,18 +460,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Trilha de Abas M1, M2, M3
-  const trackTabs = document.querySelectorAll('.track-tab');
+  const trackTabs = document.querySelectorAll('.track-tab, .track-tab-btn');
   const tabContents = document.querySelectorAll('.tab-content');
 
   trackTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const tabId = tab.dataset.tab;
       trackTabs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
+      tabContents.forEach(c => {
+        c.classList.remove('active');
+        c.classList.add('hidden');
+      });
 
       tab.classList.add('active');
       const targetContent = document.getElementById(tabId);
-      if (targetContent) targetContent.classList.add('active');
+      if (targetContent) {
+        targetContent.classList.add('active');
+        targetContent.classList.remove('hidden');
+      }
     });
   });
 
@@ -852,6 +858,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const err = await res.json();
       alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
     }
+  });
+
   // Helper para destacar campos preenchidos diretamente
   function highlightField(el) {
     if (!el) return;
