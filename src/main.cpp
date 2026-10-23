@@ -2,10 +2,43 @@
 #include "mirante/assist/ollama_client.hpp"
 #include "mirante/http/server.hpp"
 #include <iostream>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <cstdlib>
+
+namespace {
+void LoadEnvFile(const std::string& path = ".env") {
+    std::ifstream file(path);
+    if (!file.is_open()) return;
+    std::string line;
+    while (std::getline(file, line)) {
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos || line[start] == '#') continue;
+        size_t eq = line.find('=', start);
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(start, eq - start);
+        size_t key_end = key.find_last_not_of(" \t\r\n");
+        if (key_end != std::string::npos) key = key.substr(0, key_end + 1);
+
+        std::string val = line.substr(eq + 1);
+        size_t val_start = val.find_first_not_of(" \t\r\n");
+        if (val_start != std::string::npos) {
+            size_t val_end = val.find_last_not_of(" \t\r\n");
+            val = val.substr(val_start, val_end - val_start + 1);
+        } else {
+            val = "";
+        }
+        if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
+            val = val.substr(1, val.size() - 2);
+        }
+        setenv(key.c_str(), val.c_str(), 0);
+    }
+}
+}
 
 int main(int argc, char* argv[]) {
+    LoadEnvFile(".env");
     std::cout << "==========================================================" << std::endl;
     std::cout << "  Ecossistema SisTer — MIRANTE v0.1.0" << std::endl;
     std::cout << "  Experiência Assistida de Percepção Relacional (MPRR)" << std::endl;

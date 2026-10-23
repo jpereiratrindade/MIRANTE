@@ -27,3 +27,9 @@ logs/
 # Temporary scratch
 tmp/
 scratch/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
