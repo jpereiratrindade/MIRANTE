@@ -155,7 +155,7 @@ void HttpServer::Start() {
     // =========================================================================
     // Autenticação SisTer (E-mail + Código de Entrada OTP + Sessões)
     // =========================================================================
-    svr.Post("/api/auth/otp/request", [this](const httplib::Request& req, httplib::Response& res) {
+    auto handle_otp_request = [this](const httplib::Request& req, httplib::Response& res) {
         try {
             json body = json::parse(req.body);
             std::string email = body.value("email", "");
@@ -168,16 +168,18 @@ void HttpServer::Start() {
             }
             res.set_content(json({
                 {"status", "ok"},
-                {"message", "Código de entrada de uso único gerado com sucesso para " + email},
+                {"message", "Código de uso único gerado com sucesso para " + email},
                 {"dev_code", *req_res} // Disponível para uso em ambiente dev/local
             }).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
         }
-    });
+    };
+    svr.Post("/api/auth/otp/request", handle_otp_request);
+    svr.Post("/api/v1/auth/request-code", handle_otp_request);
 
-    svr.Post("/api/auth/otp/verify", [this](const httplib::Request& req, httplib::Response& res) {
+    auto handle_otp_verify = [this](const httplib::Request& req, httplib::Response& res) {
         try {
             json body = json::parse(req.body);
             std::string email = body.value("email", "");
@@ -201,9 +203,11 @@ void HttpServer::Start() {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
         }
-    });
+    };
+    svr.Post("/api/auth/otp/verify", handle_otp_verify);
+    svr.Post("/api/v1/auth/verify-code", handle_otp_verify);
 
-    svr.Get("/api/auth/me", [this](const httplib::Request& req, httplib::Response& res) {
+    auto handle_auth_me = [this](const httplib::Request& req, httplib::Response& res) {
         std::string token = req.get_header_value("X-Mirante-Token");
         if (token.empty()) {
             std::string auth = req.get_header_value("Authorization");
@@ -241,9 +245,11 @@ void HttpServer::Start() {
         }
 
         res.set_content(json({{"authenticated", false}}).dump(), "application/json");
-    });
+    };
+    svr.Get("/api/auth/me", handle_auth_me);
+    svr.Get("/api/v1/auth/me", handle_auth_me);
 
-    svr.Post("/api/auth/logout", [this](const httplib::Request& req, httplib::Response& res) {
+    auto handle_auth_logout = [this](const httplib::Request& req, httplib::Response& res) {
         std::string token = req.get_header_value("X-Mirante-Token");
         if (token.empty()) {
             std::string auth = req.get_header_value("Authorization");
@@ -253,7 +259,9 @@ void HttpServer::Start() {
             (void)db_->RevokeToken(token);
         }
         res.set_content(json({{"status", "ok"}}).dump(), "application/json");
-    });
+    };
+    svr.Post("/api/auth/logout", handle_auth_logout);
+    svr.Post("/api/v1/auth/logout", handle_auth_logout);
 
     // Helper de Autenticação Unificado SisTer
     auto check_auth = [this](const httplib::Request& req, httplib::Response& res) -> bool {

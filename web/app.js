@@ -33,25 +33,85 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
 
-  // Elementos de Autenticação SisTer
-  const btnOpenLoginModal = document.getElementById('btnOpenLoginModal');
-  const userBadge = document.getElementById('userBadge');
-  const userAvatar = document.getElementById('userAvatar');
-  const userName = document.getElementById('userName');
-  const btnLogout = document.getElementById('btnLogout');
-  const modalAuth = document.getElementById('modalAuth');
-  const btnCloseAuthModal = document.getElementById('btnCloseAuthModal');
-  const authStepEmail = document.getElementById('authStepEmail');
-  const authStepCode = document.getElementById('authStepCode');
-  const inputAuthEmail = document.getElementById('inputAuthEmail');
-  const inputAuthName = document.getElementById('inputAuthName');
-  const inputAuthCode = document.getElementById('inputAuthCode');
-  const btnSendOtp = document.getElementById('btnSendOtp');
-  const btnVerifyOtp = document.getElementById('btnVerifyOtp');
-  const btnBackToEmail = document.getElementById('btnBackToEmail');
-  const authSentNotice = document.getElementById('authSentNotice');
-  const authTargetEmail = document.getElementById('authTargetEmail');
-  const authFeedback = document.getElementById('authFeedback');
+  // Elementos de Autenticação SisTer / MORFO
+  const btnOpenLogin = document.getElementById('btn-open-login');
+  const btnSidebarAuthAction = document.getElementById('btnSidebarAuthAction');
+  const sidebarDotAuth = document.getElementById('sidebarDotAuth');
+  const sidebarUserLabel = document.getElementById('sidebarUserLabel');
+  const userChip = document.getElementById('user-chip');
+  const userAvatar = document.getElementById('user-avatar');
+  const userEmail = document.getElementById('user-email');
+  const userRole = document.getElementById('user-role');
+  const btnLogout = document.getElementById('btn-logout');
+
+  // Modal Auth Overlay SisTer
+  const authOverlay = document.getElementById('auth-overlay');
+  const btnCloseAuth = document.getElementById('btn-close-auth');
+  const authEmailForm = document.getElementById('auth-email-form');
+  const authEmailInput = document.getElementById('auth-email-input');
+  const btnRequestCode = document.getElementById('btn-request-code');
+  const authCodeForm = document.getElementById('auth-code-form');
+  const authTargetEmail = document.getElementById('auth-target-email');
+  const authCodeInput = document.getElementById('auth-code-input');
+  const authDevPreview = document.getElementById('auth-dev-preview');
+  const authDevCodeVal = document.getElementById('auth-dev-code-val');
+  const btnVerifyCode = document.getElementById('btn-verify-code');
+  const btnResendCode = document.getElementById('btn-resend-code');
+  const btnSwitchEmail = document.getElementById('btn-switch-email');
+  const authFeedback = document.getElementById('auth-feedback');
+
+  let resendCooldown = 0;
+  let resendTimerId = null;
+
+  function setAuthFeedback(msg, type = 'info') {
+    if (!authFeedback) return;
+    if (!msg) {
+      authFeedback.textContent = '';
+      authFeedback.className = 'auth-feedback hidden';
+      return;
+    }
+    authFeedback.textContent = msg;
+    authFeedback.className = `auth-feedback ${type}`;
+    authFeedback.classList.remove('hidden');
+  }
+
+  function showAuthOverlay() {
+    if (!authOverlay) return;
+    authOverlay.classList.remove('hidden');
+    setAuthFeedback('');
+    if (!authEmailInput.value && currentUser?.email) {
+      authEmailInput.value = currentUser.email;
+    }
+    if (authCodeForm && !authCodeForm.classList.contains('hidden')) {
+      authCodeInput?.focus();
+    } else {
+      authEmailInput?.focus();
+    }
+  }
+
+  function hideAuthOverlay() {
+    if (!authOverlay) return;
+    authOverlay.classList.add('hidden');
+    setAuthFeedback('');
+  }
+
+  function startResendCooldown(seconds = 60) {
+    resendCooldown = seconds;
+    if (resendTimerId) clearInterval(resendTimerId);
+    if (!btnResendCode) return;
+    btnResendCode.disabled = true;
+    btnResendCode.textContent = `↻ Reenviar código (${resendCooldown}s)`;
+    resendTimerId = setInterval(() => {
+      resendCooldown -= 1;
+      if (resendCooldown <= 0) {
+        clearInterval(resendTimerId);
+        btnResendCode.disabled = false;
+        btnResendCode.textContent = '↻ Reenviar novo código';
+      } else {
+        btnResendCode.textContent = `↻ Reenviar código (${resendCooldown}s)`;
+      }
+    }, 1000);
+  }
 
   // Gestão de Sessão do Usuário
   async function checkAuthStatus() {
@@ -77,11 +137,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function renderLoggedIn(user) {
-    btnOpenLoginModal.classList.add('hidden');
-    userBadge.classList.remove('hidden');
-    userName.textContent = user.name || user.email;
-    const initials = (user.name || user.email).substring(0, 2).toUpperCase();
-    userAvatar.textContent = initials;
+    if (btnOpenLogin) btnOpenLogin.classList.add('hidden');
+    if (userChip) userChip.classList.remove('hidden');
+    if (userEmail) userEmail.textContent = user.email || 'pesquisador@labeco.invalid';
+    if (userRole) userRole.textContent = user.role === 'admin' ? 'Coordenador SisTer' : 'Pesquisador';
+    
+    const initials = (user.name || user.email || 'PE').substring(0, 2).toUpperCase();
+    if (userAvatar) userAvatar.textContent = initials;
+
+    if (sidebarDotAuth) {
+      sidebarDotAuth.className = 'dot-online';
+    }
+    if (sidebarUserLabel) {
+      sidebarUserLabel.textContent = user.email.split('@')[0];
+    }
+    if (btnSidebarAuthAction) {
+      btnSidebarAuthAction.textContent = 'Conta ⚿';
+    }
 
     // Atualiza nome padrão em formulários
     const authorInputs = ['nsAuthor', 'author_shift', 'author_rel', 'author_q', 'author_repo'];
@@ -94,116 +166,170 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderLoggedOut() {
     currentUser = null;
     localStorage.removeItem('mirante_auth_token');
-    btnOpenLoginModal.classList.remove('hidden');
-    userBadge.classList.add('hidden');
-  }
-
-  // Modais de Autenticação
-  btnOpenLoginModal.addEventListener('click', () => {
-    modalAuth.classList.remove('hidden');
-    authStepEmail.classList.remove('hidden');
-    authStepCode.classList.add('hidden');
-    authFeedback.textContent = '';
-    inputAuthEmail.focus();
-  });
-
-  function closeAuthModal() {
-    modalAuth.classList.add('hidden');
-    authFeedback.textContent = '';
-  }
-
-  btnCloseAuthModal.addEventListener('click', closeAuthModal);
-  modalAuth.addEventListener('click', (e) => {
-    if (e.target === modalAuth) closeAuthModal();
-  });
-
-  btnBackToEmail.addEventListener('click', () => {
-    authStepEmail.classList.remove('hidden');
-    authStepCode.classList.add('hidden');
-    authFeedback.textContent = '';
-    inputAuthEmail.focus();
-  });
-
-  btnSendOtp.addEventListener('click', async () => {
-    const email = inputAuthEmail.value.trim();
-    const name = inputAuthName.value.trim();
-    if (!email || !email.includes('@')) {
-      authFeedback.className = 'auth-feedback error';
-      authFeedback.textContent = 'Por favor, informe um endereço de e-mail válido.';
-      return;
+    if (btnOpenLogin) btnOpenLogin.classList.remove('hidden');
+    if (userChip) userChip.classList.add('hidden');
+    if (sidebarDotAuth) {
+      sidebarDotAuth.className = 'dot-anon';
     }
+    if (sidebarUserLabel) {
+      sidebarUserLabel.textContent = 'Acesso Restrito';
+    }
+    if (btnSidebarAuthAction) {
+      btnSidebarAuthAction.textContent = 'Entrar ⚿';
+    }
+  }
 
-    btnSendOtp.disabled = true;
-    btnSendOtp.textContent = 'Gerando código...';
-    authFeedback.textContent = '';
+  // Event Listeners de Abertura / Fechamento de Auth
+  if (btnOpenLogin) btnOpenLogin.addEventListener('click', showAuthOverlay);
+  if (btnSidebarAuthAction) btnSidebarAuthAction.addEventListener('click', showAuthOverlay);
+  if (btnCloseAuth) btnCloseAuth.addEventListener('click', hideAuthOverlay);
+  if (authOverlay) {
+    authOverlay.addEventListener('click', (e) => {
+      if (e.target === authOverlay) hideAuthOverlay();
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && authOverlay && !authOverlay.classList.contains('hidden')) {
+      hideAuthOverlay();
+    }
+  });
 
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email, name})
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha ao solicitar código.');
-
-      authTargetEmail.textContent = email;
-      authStepEmail.classList.add('hidden');
-      authStepCode.classList.remove('hidden');
-      inputAuthCode.value = '';
-      inputAuthCode.focus();
-
-      if (data.dev_code) {
-        authFeedback.className = 'auth-feedback success';
-        authFeedback.textContent = `Código de entrada gerado: ${data.dev_code} (Ambiente Local/Dev)`;
+  // Etapa 1: Solicitar Código OTP
+  if (authEmailForm) {
+    authEmailForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authEmailInput.value.trim();
+      if (!email || !email.includes('@')) {
+        setAuthFeedback('Por favor, informe um endereço de e-mail válido.', 'error');
+        authEmailInput.focus();
+        return;
       }
-    } catch (err) {
-      authFeedback.className = 'auth-feedback error';
-      authFeedback.textContent = err.message;
-    } finally {
-      btnSendOtp.disabled = false;
-      btnSendOtp.textContent = 'Enviar Código de Entrada';
-    }
-  });
 
-  btnVerifyOtp.addEventListener('click', async () => {
-    const email = inputAuthEmail.value.trim();
-    const code = inputAuthCode.value.trim();
-    if (!code || code.length < 6) {
-      authFeedback.className = 'auth-feedback error';
-      authFeedback.textContent = 'Informe o código de 6 dígitos recebido.';
-      return;
-    }
+      btnRequestCode.disabled = true;
+      btnRequestCode.textContent = 'Disparando código...';
+      setAuthFeedback('Processando requisição segura...', 'info');
 
-    btnVerifyOtp.disabled = true;
-    btnVerifyOtp.textContent = 'Verificando...';
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({email})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao solicitar código.');
 
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email, code})
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Código incorreto ou expirado.');
+        authTargetEmail.textContent = email;
+        authEmailForm.classList.add('hidden');
+        authCodeForm.classList.remove('hidden');
+        authCodeInput.value = '';
+        authCodeInput.focus();
+        startResendCooldown(60);
 
-      localStorage.setItem('mirante_auth_token', data.token);
-      renderLoggedIn(data.user);
-      closeAuthModal();
-    } catch (err) {
-      authFeedback.className = 'auth-feedback error';
-      authFeedback.textContent = err.message;
-    } finally {
-      btnVerifyOtp.disabled = false;
-      btnVerifyOtp.textContent = 'Confirmar e Entrar';
-    }
-  });
+        if (data.dev_code) {
+          if (authDevPreview) authDevPreview.classList.remove('hidden');
+          if (authDevCodeVal) authDevCodeVal.textContent = data.dev_code;
+          setAuthFeedback('Código gerado no modo piloto/local.', 'success');
+        } else {
+          if (authDevPreview) authDevPreview.classList.add('hidden');
+          setAuthFeedback('Código temporário enviado para sua caixa de entrada.', 'success');
+        }
+      } catch (err) {
+        setAuthFeedback(err.message, 'error');
+      } finally {
+        btnRequestCode.disabled = false;
+        btnRequestCode.textContent = 'Enviar código por e-mail →';
+      }
+    });
+  }
 
-  btnLogout.addEventListener('click', async () => {
-    try {
-      await authFetch(`${API_BASE}/api/auth/logout`, {method: 'POST'});
-    } catch {}
-    renderLoggedOut();
-  });
+  // Etapa 2: Validar Código OTP
+  if (authCodeForm) {
+    authCodeForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authTargetEmail.textContent.trim() || authEmailInput.value.trim();
+      const code = authCodeInput.value.trim();
+      if (!code || code.length < 6) {
+        setAuthFeedback('Informe o código numérico de 6 dígitos recebido.', 'error');
+        authCodeInput.focus();
+        return;
+      }
+
+      btnVerifyCode.disabled = true;
+      btnVerifyCode.textContent = 'Verificando...';
+      setAuthFeedback('Validando integridade do código...', 'info');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/otp/verify`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({email, code})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Código incorreto, expirado ou tentativas esgotadas.');
+
+        localStorage.setItem('mirante_auth_token', data.token);
+        renderLoggedIn(data.user);
+        hideAuthOverlay();
+      } catch (err) {
+        setAuthFeedback(err.message, 'error');
+      } finally {
+        btnVerifyCode.disabled = false;
+        btnVerifyCode.textContent = 'Confirmar código e entrar ✓';
+      }
+    });
+  }
+
+  // Trocar e-mail ou reenviar
+  if (btnSwitchEmail) {
+    btnSwitchEmail.addEventListener('click', () => {
+      authCodeForm.classList.add('hidden');
+      authEmailForm.classList.remove('hidden');
+      setAuthFeedback('');
+      authEmailInput.focus();
+    });
+  }
+
+  if (btnResendCode) {
+    btnResendCode.addEventListener('click', async () => {
+      if (resendCooldown > 0) return;
+      const email = authTargetEmail.textContent.trim() || authEmailInput.value.trim();
+      if (!email) return;
+
+      btnResendCode.disabled = true;
+      btnResendCode.textContent = 'Reenviando...';
+      setAuthFeedback('Enviando novo código...', 'info');
+
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/otp/request`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({email})
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha ao reenviar código.');
+
+        startResendCooldown(60);
+        if (data.dev_code) {
+          if (authDevPreview) authDevPreview.classList.remove('hidden');
+          if (authDevCodeVal) authDevCodeVal.textContent = data.dev_code;
+          setAuthFeedback('Novo código gerado no modo piloto/local.', 'success');
+        } else {
+          setAuthFeedback('Novo código enviado com sucesso.', 'success');
+        }
+      } catch (err) {
+        setAuthFeedback(err.message, 'error');
+      }
+    });
+  }
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+      try {
+        await authFetch(`${API_BASE}/api/auth/logout`, {method: 'POST'});
+      } catch {}
+      renderLoggedOut();
+    });
+  }
 
   // Modal de Nova Sessão
   const modalNewSession = document.getElementById('modalNewSession');
@@ -282,8 +408,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Navegação Lateral
-  const navItems = document.querySelectorAll('.sidebar-menu .nav-item');
+  // Navegação Lateral e Alternância de Telas
+  const navItems = document.querySelectorAll('.sidebar-nav .nav-item, .sidebar-menu .nav-item');
   const sections = {
     '#workbench': document.getElementById('sectionWorkbench'),
     '#confrontation': document.getElementById('sectionConfrontation'),
@@ -295,8 +421,10 @@ document.addEventListener('DOMContentLoaded', () => {
   navItems.forEach(item => {
     item.addEventListener('click', (e) => {
       e.preventDefault();
-      const targetHash = item.getAttribute('href');
-      switchSection(targetHash);
+      const targetHash = item.getAttribute('data-target') || item.getAttribute('href');
+      if (targetHash) switchSection(targetHash);
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar && sidebar.classList.contains('open')) sidebar.classList.remove('open');
     });
   });
 
@@ -304,22 +432,31 @@ document.addEventListener('DOMContentLoaded', () => {
     navItems.forEach(i => i.classList.remove('active'));
     Object.values(sections).forEach(s => {
       if (s) {
-        s.classList.remove('active-section');
-        s.style.display = 'none';
+        s.classList.remove('active');
+        s.classList.add('hidden');
       }
     });
 
-    const activeNav = document.querySelector(`.sidebar-menu .nav-item[href="${targetHash}"]`);
+    const activeNav = document.querySelector(`.nav-item[data-target="${targetHash}"], .nav-item[href="${targetHash}"]`);
     if (activeNav) activeNav.classList.add('active');
 
     const targetSec = sections[targetHash];
     if (targetSec) {
-      targetSec.classList.add('active-section');
-      targetSec.style.display = 'block';
+      targetSec.classList.add('active');
+      targetSec.classList.remove('hidden');
     }
 
     if (targetHash === '#dossier') renderDossier();
     if (targetHash === '#provenance') renderProvenanceLedger();
+  }
+
+  // Toggle do menu mobile
+  const menuBtn = document.getElementById('menuBtn');
+  if (menuBtn) {
+    menuBtn.addEventListener('click', () => {
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar) sidebar.classList.toggle('open');
+    });
   }
 
   // Trilha de Abas M1, M2, M3

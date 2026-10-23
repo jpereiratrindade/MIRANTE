@@ -811,7 +811,39 @@ std::string Database::RandomHex(size_t bytes) {
     return os.str();
 }
 
+namespace {
+void LocalLoadEnv(const std::string& path = ".env") {
+    std::ifstream file(path);
+    if (!file.is_open()) return;
+    std::string line;
+    while (std::getline(file, line)) {
+        size_t start = line.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos || line[start] == '#') continue;
+        size_t eq = line.find('=', start);
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(start, eq - start);
+        size_t key_end = key.find_last_not_of(" \t\r\n");
+        if (key_end != std::string::npos) key = key.substr(0, key_end + 1);
+
+        std::string val = line.substr(eq + 1);
+        size_t val_start = val.find_first_not_of(" \t\r\n");
+        if (val_start != std::string::npos) {
+            size_t val_end = val.find_last_not_of(" \t\r\n");
+            val = val.substr(val_start, val_end - val_start + 1);
+        } else {
+            val = "";
+        }
+        if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
+            val = val.substr(1, val.size() - 2);
+        }
+        setenv(key.c_str(), val.c_str(), 1);
+    }
+}
+}
+
 bool Database::SendOtpEmail(const std::string& to_email, const std::string& code, std::string& err_out) {
+    LocalLoadEnv(".env");
+
     auto get_env_val = [](const char* k1, const char* k2, const std::string& def) -> std::string {
         if (const char* v1 = std::getenv(k1); v1 && std::strlen(v1) > 0) return v1;
         if (const char* v2 = std::getenv(k2); v2 && std::strlen(v2) > 0) return v2;
@@ -828,16 +860,36 @@ bool Database::SendOtpEmail(const std::string& to_email, const std::string& code
         return true;
     }
 
+    if (smtp_host.find('@') != std::string::npos) {
+        if (smtp_host.find("gmail.com") != std::string::npos) smtp_host = "smtp.gmail.com";
+        else {
+            size_t at = smtp_host.find('@');
+            smtp_host = "smtp." + smtp_host.substr(at + 1);
+        }
+    }
+
     std::string port = get_env_val("MIRANTE_SMTP_PORT", "SISTER_SMTP_PORT", "587");
     std::string user = get_env_val("MIRANTE_SMTP_USER", "SISTER_SMTP_USER", "");
     std::string pass = get_env_val("MIRANTE_SMTP_PASS", "SISTER_SMTP_PASS", "");
-    std::string from = get_env_val("MIRANTE_SMTP_FROM", "SISTER_SMTP_FROM", "mprr@labeco.invalid");
+    std::string from = get_env_val("MIRANTE_SMTP_FROM", "SISTER_SMTP_FROM", user.empty() ? "notificacoes@labeco.invalid" : user);
+
+    // Envelope sender must be a pure email address without displayName or angle brackets
+    std::string envelope_from = from;
+    size_t lt = envelope_from.find('<');
+    size_t gt = envelope_from.find('>');
+    if (lt != std::string::npos && gt != std::string::npos && gt > lt) {
+        envelope_from = envelope_from.substr(lt + 1, gt - lt - 1);
+    }
+    envelope_from.erase(std::remove_if(envelope_from.begin(), envelope_from.end(), [](unsigned char c) {
+        return std::isspace(c) || c == '"' || c == '\'';
+    }), envelope_from.end());
+    if (envelope_from.empty()) envelope_from = user;
 
     std::string temp_file = std::format("/tmp/mirante-otp-{}.eml", RandomHex(6));
     {
         std::ofstream ofs(temp_file);
         if (!ofs) { err_out = "Erro ao criar arquivo de e-mail temporário"; return false; }
-        ofs << "From: \"SisTer MIRANTE\" <" << from << ">\r\n"
+        ofs << "From: \"SisTer MIRANTE\" <" << (user.empty() ? envelope_from : user) << ">\r\n"
             << "To: <" << to_email << ">\r\n"
             << "Subject: MIRANTE - Codigo de Entrada: " << code << "\r\n"
             << "Content-Type: text/plain; charset=utf-8\r\n\r\n"
@@ -853,28 +905,47 @@ bool Database::SendOtpEmail(const std::string& to_email, const std::string& code
     }
 
     std::string clean_pass = pass;
-    clean_pass.erase(std::remove_if(clean_pass.begin(), clean_pass.end(), [](unsigned char c) { return std::isspace(c); }), clean_pass.end());
+    clean_pass.erase(std::remove_if(clean_pass.begin(), clean_pass.end(), [](unsigned char c) {
+        return std::isspace(c) || c == '"' || c == '\'';
+    }), clean_pass.end());
 
-    std::string cmd = std::format(
-        "curl --silent --show-error --connect-timeout 10 --max-time 20 --url 'smtp://{}:{}' "
-        "--mail-from '{}' --mail-rcpt '{}' --upload-file '{}' --ssl-reqd --user '{}:{}' 2>&1",
-        smtp_host, port, from, to_email, temp_file, user, clean_pass
-    );
+    std::string py_cmd = "python3 -c '\n"
+        "import smtplib, ssl, sys\n"
+        "host, port = sys.argv[1], int(sys.argv[2])\n"
+        "user, pwd = sys.argv[3], sys.argv[4]\n"
+        "mail_from, mail_to, eml_path = sys.argv[5], sys.argv[6], sys.argv[7]\n"
+        "try:\n"
+        "    with open(eml_path, \"rb\") as f: data = f.read()\n"
+        "    ctx = ssl.create_default_context()\n"
+        "    if port == 465:\n"
+        "        with smtplib.SMTP_SSL(host, port, context=ctx, timeout=20) as s:\n"
+        "            if user and pwd: s.login(user, pwd)\n"
+        "            s.sendmail(mail_from, [mail_to], data)\n"
+        "    else:\n"
+        "        with smtplib.SMTP(host, port, timeout=20) as s:\n"
+        "            s.starttls(context=ctx)\n"
+        "            if user and pwd: s.login(user, pwd)\n"
+        "            s.sendmail(mail_from, [mail_to], data)\n"
+        "    print(\"OK\")\n"
+        "except Exception as err:\n"
+        "    sys.stderr.write(str(err) + \"\\n\")\n"
+        "    sys.exit(1)\n"
+        "' \"" + smtp_host + "\" \"" + port + "\" \"" + user + "\" \"" + clean_pass + "\" \"" + envelope_from + "\" \"" + to_email + "\" \"" + temp_file + "\" 2>&1";
 
-    FILE* p = popen(cmd.c_str(), "r");
-    std::string curl_out;
+    FILE* p = popen(py_cmd.c_str(), "r");
+    std::string out_msg;
     if (p) {
         char buf[512];
-        while (fgets(buf, sizeof(buf), p)) curl_out += buf;
+        while (fgets(buf, sizeof(buf), p)) out_msg += buf;
         int st = pclose(p);
         std::filesystem::remove(temp_file);
         if (st != 0) {
-            err_out = "Falha no envio SMTP: " + curl_out;
+            err_out = "Falha no envio SMTP: " + out_msg;
             return false;
         }
     } else {
         std::filesystem::remove(temp_file);
-        err_out = "Não foi possível disparar curl para SMTP";
+        err_out = "Não foi possível disparar processo SMTP";
         return false;
     }
     return true;

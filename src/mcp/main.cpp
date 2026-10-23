@@ -40,7 +40,7 @@ void LoadEnvFile(const std::string& path = ".env") {
         if (val.size() >= 2 && ((val.front() == '"' && val.back() == '"') || (val.front() == '\'' && val.back() == '\''))) {
             val = val.substr(1, val.size() - 2);
         }
-        setenv(key.c_str(), val.c_str(), 0);
+        setenv(key.c_str(), val.c_str(), 1);
     }
 }
 
