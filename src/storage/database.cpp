@@ -211,10 +211,7 @@ std::expected<std::string, std::string> Database::AppendEvent(
     return cur_hash;
 }
 
-std::expected<void, std::string> Database::SaveSession(const domain::SessionAggregate& session) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!db_) return std::unexpected("Banco de dados não aberto");
-
+static json SessionToJson(const domain::SessionAggregate& session) {
     json j;
     j["session_id"] = session.session_id;
     j["project_id"] = session.project_id;
@@ -231,7 +228,8 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
     j["phenomenon"] = {
         {"text", session.phenomenon_description.text},
         {"author", session.phenomenon_description.author},
-        {"origin", domain::ToString(session.phenomenon_description.origin)}
+        {"origin", domain::ToString(session.phenomenon_description.origin)},
+        {"model_digest", session.phenomenon_description.model_digest}
     };
 
     if (session.shift.has_value()) {
@@ -242,7 +240,8 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
             {"dimension", domain::ToString(session.shift->dimension)},
             {"rationale", session.shift->rationale.text},
             {"author", session.shift->rationale.author},
-            {"origin", domain::ToString(session.shift->rationale.origin)}
+            {"origin", domain::ToString(session.shift->rationale.origin)},
+            {"model_digest", session.shift->rationale.model_digest}
         };
     }
 
@@ -256,7 +255,8 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
             {"status", domain::ToString(r.status)},
             {"description", r.description.text},
             {"author", r.description.author},
-            {"origin", domain::ToString(r.description.origin)}
+            {"origin", domain::ToString(r.description.origin)},
+            {"model_digest", r.description.model_digest}
         });
     }
 
@@ -268,7 +268,8 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
             {"text", q.question_text.text},
             {"evidence_path", q.required_evidence_path},
             {"author", q.question_text.author},
-            {"origin", domain::ToString(q.question_text.origin)}
+            {"origin", domain::ToString(q.question_text.origin)},
+            {"model_digest", q.question_text.model_digest}
         });
     }
 
@@ -278,6 +279,9 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
             {"id", h.id},
             {"question_id", h.question_id},
             {"formulation", h.formulation.text},
+            {"author", h.formulation.author},
+            {"origin", domain::ToString(h.formulation.origin)},
+            {"model_digest", h.formulation.model_digest},
             {"status", domain::ToString(h.status)},
             {"cycle_version", h.cycle_version}
         });
@@ -291,11 +295,21 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
         
         j_conf["rival_explanations"] = json::array();
         for (const auto& r : session.confrontation->rival_explanations) {
-            j_conf["rival_explanations"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
+            j_conf["rival_explanations"].push_back({
+                {"text", r.text}, 
+                {"author", r.author}, 
+                {"origin", domain::ToString(r.origin)},
+                {"model_digest", r.model_digest}
+            });
         }
         j_conf["epistemic_risks"] = json::array();
         for (const auto& r : session.confrontation->epistemic_risks) {
-            j_conf["epistemic_risks"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
+            j_conf["epistemic_risks"].push_back({
+                {"text", r.text}, 
+                {"author", r.author}, 
+                {"origin", domain::ToString(r.origin)},
+                {"model_digest", r.model_digest}
+            });
         }
         j["confrontation"] = j_conf;
     }
@@ -307,12 +321,24 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
             {"cycle", rep.cycle_version},
             {"decision", domain::ToString(rep.decision)},
             {"justification", rep.verdict_justification.text},
+            {"author", rep.verdict_justification.author},
+            {"origin", domain::ToString(rep.verdict_justification.origin)},
+            {"model_digest", rep.verdict_justification.model_digest},
             {"next_empirical_test", rep.next_empirical_test},
             {"required_knowledge", rep.required_knowledge},
-            {"resumption_criteria", rep.resumption_criteria}
+            {"resumption_criteria", rep.resumption_criteria},
+            {"decided_at_iso", rep.decided_at_iso}
         });
     }
 
+    return j;
+}
+
+std::expected<void, std::string> Database::SaveSession(const domain::SessionAggregate& session) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    json j = SessionToJson(session);
     std::string data_str = j.dump(2);
 
     const char* sql = R"(
@@ -368,104 +394,7 @@ std::expected<std::string, std::string> Database::SaveSessionWithEvent(
     }
 
     // 1. Gravar Sessão
-    json j;
-    j["session_id"] = session.session_id;
-    j["project_id"] = session.project_id;
-    j["title"] = session.title;
-    j["entrance_door"] = domain::ToString(session.entrance_door);
-    j["state"] = domain::ToString(session.state);
-    j["current_cycle"] = session.current_cycle;
-    j["spatial_boundary"] = session.spatial_boundary;
-    j["temporal_boundary"] = session.temporal_boundary;
-    j["research_context"] = session.research_context;
-    j["participants"] = session.participants;
-    j["initial_sources"] = session.initial_sources;
-
-    j["phenomenon"] = {
-        {"text", session.phenomenon_description.text},
-        {"author", session.phenomenon_description.author},
-        {"origin", domain::ToString(session.phenomenon_description.origin)}
-    };
-
-    if (session.shift.has_value()) {
-        j["shift"] = {
-            {"id", session.shift->id},
-            {"initial_framework", session.shift->initial_framework},
-            {"shifted_framework", session.shift->shifted_framework},
-            {"dimension", domain::ToString(session.shift->dimension)},
-            {"rationale", session.shift->rationale.text},
-            {"author", session.shift->rationale.author},
-            {"origin", domain::ToString(session.shift->rationale.origin)}
-        };
-    }
-
-    j["relations"] = json::array();
-    for (const auto& r : session.relations) {
-        j["relations"].push_back({
-            {"id", r.id},
-            {"term_a", r.term_a},
-            {"term_b", r.term_b},
-            {"type", domain::ToString(r.type)},
-            {"status", domain::ToString(r.status)},
-            {"description", r.description.text},
-            {"author", r.description.author},
-            {"origin", domain::ToString(r.description.origin)}
-        });
-    }
-
-    j["questions"] = json::array();
-    for (const auto& q : session.questions) {
-        j["questions"].push_back({
-            {"id", q.id},
-            {"relation_id", q.relation_id},
-            {"text", q.question_text.text},
-            {"evidence_path", q.required_evidence_path},
-            {"author", q.question_text.author},
-            {"origin", domain::ToString(q.question_text.origin)}
-        });
-    }
-
-    j["hypotheses"] = json::array();
-    for (const auto& h : session.hypotheses) {
-        j["hypotheses"].push_back({
-            {"id", h.id},
-            {"question_id", h.question_id},
-            {"formulation", h.formulation.text},
-            {"status", domain::ToString(h.status)},
-            {"cycle_version", h.cycle_version}
-        });
-    }
-
-    if (session.confrontation.has_value()) {
-        json j_conf;
-        j_conf["id"] = session.confrontation->id;
-        j_conf["hypothesis_id"] = session.confrontation->hypothesis_id;
-        j_conf["is_concluded"] = session.confrontation->is_concluded;
-        
-        j_conf["rival_explanations"] = json::array();
-        for (const auto& r : session.confrontation->rival_explanations) {
-            j_conf["rival_explanations"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
-        }
-        j_conf["epistemic_risks"] = json::array();
-        for (const auto& r : session.confrontation->epistemic_risks) {
-            j_conf["epistemic_risks"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
-        }
-        j["confrontation"] = j_conf;
-    }
-
-    j["repositions"] = json::array();
-    for (const auto& rep : session.reposition_history) {
-        j["repositions"].push_back({
-            {"id", rep.id},
-            {"cycle", rep.cycle_version},
-            {"decision", domain::ToString(rep.decision)},
-            {"justification", rep.verdict_justification.text},
-            {"next_empirical_test", rep.next_empirical_test},
-            {"required_knowledge", rep.required_knowledge},
-            {"resumption_criteria", rep.resumption_criteria}
-        });
-    }
-
+    json j = SessionToJson(session);
     std::string data_str = j.dump(2);
 
     const char* sql = R"(
@@ -595,6 +524,9 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
         if (j.contains("phenomenon")) {
             s.phenomenon_description.text = j["phenomenon"].value("text", "");
             s.phenomenon_description.author = j["phenomenon"].value("author", "");
+            s.phenomenon_description.model_digest = j["phenomenon"].value("model_digest", "");
+            std::string p_orig = j["phenomenon"].value("origin", "HUMAN");
+            s.phenomenon_description.origin = (p_orig == "ASSISTED" || p_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human;
         }
 
         if (j.contains("shift")) {
@@ -604,6 +536,9 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
             ps.shifted_framework = j["shift"].value("shifted_framework", "");
             ps.rationale.text = j["shift"].value("rationale", "");
             ps.rationale.author = j["shift"].value("author", "");
+            ps.rationale.model_digest = j["shift"].value("model_digest", "");
+            std::string s_orig = j["shift"].value("origin", "HUMAN");
+            ps.rationale.origin = (s_orig == "ASSISTED" || s_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human;
             s.shift = ps;
         }
 
@@ -615,6 +550,9 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
                 r.term_b = rj.value("term_b", "");
                 r.description.text = rj.value("description", "");
                 r.description.author = rj.value("author", "");
+                r.description.model_digest = rj.value("model_digest", "");
+                std::string r_orig = rj.value("origin", "HUMAN");
+                r.description.origin = (r_orig == "ASSISTED" || r_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human;
                 s.relations.push_back(r);
             }
         }
@@ -627,6 +565,9 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
                 q.question_text.text = qj.value("text", "");
                 q.required_evidence_path = qj.value("evidence_path", "");
                 q.question_text.author = qj.value("author", "");
+                q.question_text.model_digest = qj.value("model_digest", "");
+                std::string q_orig = qj.value("origin", "HUMAN");
+                q.question_text.origin = (q_orig == "ASSISTED" || q_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human;
                 s.questions.push_back(q);
             }
         }
@@ -637,6 +578,8 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
                 h.id = hj.value("id", "");
                 h.question_id = hj.value("question_id", "");
                 h.formulation.text = hj.value("formulation", "");
+                h.formulation.author = hj.value("author", "");
+                h.formulation.model_digest = hj.value("model_digest", "");
                 h.cycle_version = hj.value("cycle_version", 1);
                 s.hypotheses.push_back(h);
             }
@@ -649,11 +592,12 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
             cr.is_concluded = j["confrontation"].value("is_concluded", false);
             if (j["confrontation"].contains("rival_explanations")) {
                 for (const auto& item : j["confrontation"]["rival_explanations"]) {
+                    std::string item_orig = item.value("origin", "HUMAN");
                     cr.rival_explanations.push_back(domain::ProvenancedText{
                         .text = item.value("text", ""),
-                        .origin = domain::ProvenanceOrigin::Human,
+                        .origin = (item_orig == "ASSISTED" || item_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                         .author = item.value("author", ""),
-                        .model_digest = "",
+                        .model_digest = item.value("model_digest", ""),
                         .citation = "",
                         .timestamp_iso = ""
                     });
@@ -661,17 +605,47 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
             }
             if (j["confrontation"].contains("epistemic_risks")) {
                 for (const auto& item : j["confrontation"]["epistemic_risks"]) {
+                    std::string item_orig = item.value("origin", "HUMAN");
                     cr.epistemic_risks.push_back(domain::ProvenancedText{
                         .text = item.value("text", ""),
-                        .origin = domain::ProvenanceOrigin::Human,
+                        .origin = (item_orig == "ASSISTED" || item_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                         .author = item.value("author", ""),
-                        .model_digest = "",
+                        .model_digest = item.value("model_digest", ""),
                         .citation = "",
                         .timestamp_iso = ""
                     });
                 }
             }
             s.confrontation = cr;
+        }
+
+        if (j.contains("repositions")) {
+            for (const auto& repj : j["repositions"]) {
+                domain::RepositionDecision rep;
+                rep.id = repj.value("id", "");
+                rep.session_id = s.session_id;
+                rep.cycle_version = repj.value("cycle", 1);
+
+                std::string dec_str = repj.value("decision", "DEVELOP");
+                if (dec_str == "DEVELOP") rep.decision = domain::HypothesisStatus::Develop;
+                else if (dec_str == "REJECT") rep.decision = domain::HypothesisStatus::Reject;
+                else if (dec_str == "SUSPEND") rep.decision = domain::HypothesisStatus::Suspend;
+                else if (dec_str == "REFORMULATE") rep.decision = domain::HypothesisStatus::Reformulate;
+                else rep.decision = domain::HypothesisStatus::Develop;
+
+                rep.verdict_justification.text = repj.value("justification", "");
+                rep.verdict_justification.author = repj.value("author", "Pesquisador");
+                rep.verdict_justification.model_digest = repj.value("model_digest", "");
+                std::string r_orig = repj.value("origin", "HUMAN");
+                rep.verdict_justification.origin = (r_orig == "ASSISTED" || r_orig == "Assisted") ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human;
+
+                rep.next_empirical_test = repj.value("next_empirical_test", "");
+                rep.required_knowledge = repj.value("required_knowledge", "");
+                rep.resumption_criteria = repj.value("resumption_criteria", "");
+                rep.decided_at_iso = repj.value("decided_at_iso", "");
+
+                s.reposition_history.push_back(rep);
+            }
         }
 
         return s;

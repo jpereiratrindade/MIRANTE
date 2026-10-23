@@ -209,11 +209,119 @@ void TestInv03_MerkleLedgerAndAtomicTransactions() {
     std::cout << "  -> OK! Cadeia Merkle validada e adulteração detectada com sucesso." << std::endl;
 }
 
+void TestInv01_ReferentialIntegrity() {
+    std::cout << "[TESTE] INV-01: Integridade Referencial Estrita (Relação Obrigatória e Existente)..." << std::endl;
+    SessionAggregate s;
+    s.session_id = "SES-REF-001";
+    s.project_id = "PRJ-BIO";
+    s.title = "Teste de Vínculo Referencial";
+    s.phenomenon_description = {.text = "Fixação biológica de N2", .author = "Pesquisador"};
+
+    // 1. Tentar adicionar questão sem nenhuma relação cadastrada
+    ProvenancedText q1{.text = "Como a nodulação varia com o pH?", .origin = ProvenanceOrigin::Human, .author = "Pesquisador"};
+    auto r1 = s.AddScientificQuestion("REL-001", q1, "Ensaio em vaso");
+    MIRANTE_CHECK(!r1.has_value(), "Adicionar questão com relação inexistente DEVE falhar");
+    MIRANTE_CHECK(r1.error().code == InvariantErrorCode::INV01_PrematureCertainty, "Erro deve ser INV01_PrematureCertainty");
+
+    // 2. Tentar adicionar questão com relation_id vazio
+    auto r2 = s.AddScientificQuestion("", q1, "Ensaio em vaso");
+    MIRANTE_CHECK(!r2.has_value(), "Adicionar questão com relation_id vazio DEVE falhar");
+
+    // 3. Cadastrar relação candidata legítima
+    ProvenancedText rdesc{.text = "Rhizobium em simbiose com raiz", .origin = ProvenanceOrigin::Human, .author = "Pesquisador"};
+    auto rel_res = s.AddCandidateRelation("Rhizobium", "Massa nodular", RelationType::ConjecturedMechanism, rdesc);
+    MIRANTE_CHECK(rel_res.has_value(), "Cadastro de relação candidata deve ter sucesso");
+    std::string valid_rel_id = s.relations.back().id;
+
+    // 4. Tentar com ID fantasma (ex: o antigo default REL-001) quando o ID real é REL-SES-REF-001-1
+    auto r3 = s.AddScientificQuestion("REL-001", q1, "Ensaio em vaso");
+    MIRANTE_CHECK(!r3.has_value(), "ID fantasma 'REL-001' deve ser categoricamente rejeitado");
+
+    // 5. Vincular com o ID real existente
+    auto r4 = s.AddScientificQuestion(valid_rel_id, q1, "Ensaio em vaso");
+    MIRANTE_CHECK(r4.has_value(), "Adicionar questão vinculada a relation_id real deve ter sucesso");
+    MIRANTE_CHECK(s.questions[0].relation_id == valid_rel_id, "relation_id armazenado deve bater exatamente com a relação candidata");
+
+    std::cout << "  -> OK! Relações inexistentes rejeitadas e vínculo referencial verificado." << std::endl;
+}
+
+void TestMultiCycleRepositionPersistence() {
+    std::cout << "[TESTE] Epistemológico: Persistência e Reconstituição de Reposicionamentos Multiciclo..." << std::endl;
+    std::string test_db = "test_persistence.sqlite3";
+    if (std::filesystem::exists(test_db)) std::filesystem::remove(test_db);
+
+    Database db;
+    auto op = db.Open(test_db);
+    MIRANTE_CHECK(op.has_value(), "Falha ao abrir SQLite de teste");
+
+    SessionAggregate s;
+    s.session_id = "SES-CYCLE-TEST";
+    s.project_id = "PRJ-ECOL";
+    s.title = "Sessão Multiciclo";
+    s.phenomenon_description = {.text = "Fenômeno multiciclo", .author = "Pesquisador"};
+
+    ProvenancedText s_rat{.text = "Mudança de escala", .author = "Pesquisador"};
+    auto shift_ok = s.SetPerspectiveShift("Escala micro", "Escala macro", ShiftDimension::SpatialScale, s_rat);
+    MIRANTE_CHECK(shift_ok.has_value(), "Falha ao definir deslocamento");
+
+    ProvenancedText r_desc{.text = "Relação candidata A-B", .author = "Pesquisador"};
+    auto rel_ok = s.AddCandidateRelation("Termo A", "Termo B", RelationType::ConjecturedMechanism, r_desc);
+    MIRANTE_CHECK(rel_ok.has_value(), "Falha ao adicionar relação candidata");
+    std::string test_rel_id = s.relations.back().id;
+
+    ProvenancedText q_desc{.text = "Questão investigável 1", .author = "Pesquisador"};
+    auto q_ok = s.AddScientificQuestion(test_rel_id, q_desc, "Lab test");
+    MIRANTE_CHECK(q_ok.has_value(), "Falha ao adicionar questão investigável");
+
+    // Ciclo 1 -> Confronto e Reposicionamento DEVELOP
+    std::vector<ProvenancedText> rivals1 = {{.text = "Rival 1", .author = "Revisor"}};
+    std::vector<ProvenancedText> risks1 = {{.text = "Risco 1", .author = "Revisor"}};
+    auto conf1_ok = s.RecordConfrontation(rivals1, risks1, {});
+    MIRANTE_CHECK(conf1_ok.has_value(), "Falha no confronto ciclo 1");
+
+    ProvenancedText rep_just1{.text = "Decisão de desenvolver no ciclo 1", .author = "Pesquisador"};
+    auto repo1_ok = s.ConsolidateReposition(HypothesisStatus::Develop, rep_just1, "Próximo ensaio 1", "Novo dado 1", "");
+    MIRANTE_CHECK(repo1_ok.has_value(), "Falha na consolidação ciclo 1");
+    MIRANTE_CHECK(s.current_cycle == 2, "Ciclo deve avançar para 2");
+
+    // Ciclo 2 -> Confronto e Reposicionamento REFORMULATE
+    std::vector<ProvenancedText> rivals2 = {{.text = "Rival 2", .author = "Revisor"}};
+    std::vector<ProvenancedText> risks2 = {{.text = "Risco 2", .author = "Revisor"}};
+    auto conf2_ok = s.RecordConfrontation(rivals2, risks2, {});
+    MIRANTE_CHECK(conf2_ok.has_value(), "Falha no confronto ciclo 2");
+
+    ProvenancedText rep_just2{.text = "Decisão de reenquadrar no ciclo 2", .author = "Pesquisador"};
+    auto repo2_ok = s.ConsolidateReposition(HypothesisStatus::Reformulate, rep_just2, "Próximo ensaio 2", "Novo dado 2", "");
+    MIRANTE_CHECK(repo2_ok.has_value(), "Falha na consolidação ciclo 2");
+    MIRANTE_CHECK(s.current_cycle == 3, "Ciclo deve avançar para 3");
+
+    // Salva no banco de dados com evento atômico
+    auto save_res = db.SaveSessionWithEvent(s, "C5_REPOSITION_CYCLE_2", "{\"cycle\": 2}", "Pesquisador");
+    MIRANTE_CHECK(save_res.has_value(), "Falha ao salvar sessão multiciclo no banco");
+
+    // Recarrega do banco
+    auto loaded_opt = db.LoadSession("SES-CYCLE-TEST");
+    MIRANTE_CHECK(loaded_opt.has_value(), "Falha ao recarregar sessão multiciclo");
+    const auto& loaded = *loaded_opt;
+
+    MIRANTE_CHECK(loaded.current_cycle == 3, "Ciclo recarregado deve ser 3");
+    MIRANTE_CHECK(loaded.reposition_history.size() == 2, "Histórico recarregado deve conter exatamente 2 reposicionamentos");
+    MIRANTE_CHECK(loaded.reposition_history[0].decision == HypothesisStatus::Develop, "Primeiro reposicionamento deve ser DEVELOP");
+    MIRANTE_CHECK(loaded.reposition_history[0].verdict_justification.text == "Decisão de desenvolver no ciclo 1", "Justificativa do ciclo 1 deve ser preservada");
+    MIRANTE_CHECK(loaded.reposition_history[1].decision == HypothesisStatus::Reformulate, "Segundo reposicionamento deve ser REFORMULATE");
+    MIRANTE_CHECK(loaded.reposition_history[1].verdict_justification.text == "Decisão de reenquadrar no ciclo 2", "Justificativa do ciclo 2 deve ser preservada");
+
+    db.Close();
+    if (std::filesystem::exists(test_db)) std::filesystem::remove(test_db);
+    std::cout << "  -> OK! Trajetória multiciclo preservada integralmente através do storage." << std::endl;
+}
+
 int main() {
     std::cout << "=========================================================" << std::endl;
     std::cout << "  MIRANTE — BATERIA DE TESTES DE INVARIANTES DO PROTOCOLO" << std::endl;
     std::cout << "=========================================================" << std::endl;
     TestInv01_PrematureCertainty();
+    TestInv01_ReferentialIntegrity();
     TestInv02_ConfrontationCompleteness();
     TestInv04_ProvenanceTransparency();
     TestInv05_AutonomousCore();
@@ -221,8 +329,10 @@ int main() {
     TestInv07_PerspectiveShift();
     TestInv08_RepositionNextStep();
     TestInv03_MerkleLedgerAndAtomicTransactions();
+    TestMultiCycleRepositionPersistence();
     std::cout << "=========================================================" << std::endl;
-    std::cout << "  TODOS OS 8 INVARIANTES METODOLÓGICOS FORAM VALIDADOS!  " << std::endl;
+    std::cout << "  TODOS OS INVARIANTES E TESTES ADVERSARIAIS PASSARAM!   " << std::endl;
     std::cout << "=========================================================" << std::endl;
     return 0;
 }
+

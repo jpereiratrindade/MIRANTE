@@ -62,6 +62,33 @@ std::expected<void, InvariantViolation> SessionAggregate::AddScientificQuestion(
     const ProvenancedText& question_text,
     const std::string& evidence_path
 ) {
+    // P0: Integridade Referencial Obrigatória (INV-01)
+    if (relation_id.empty()) {
+        return std::unexpected(InvariantViolation{
+            .code = InvariantErrorCode::INV01_PrematureCertainty,
+            .invariant_id = "INV-01",
+            .message = "Vínculo referencial ausente: a questão científica deve obrigatoriamente se vincular a uma relação candidata registrada.",
+            .corrective_hint = "Forneça o identificador de uma relação candidata válida da sessão."
+        });
+    }
+
+    bool relation_found = false;
+    for (const auto& r : relations) {
+        if (r.id == relation_id) {
+            relation_found = true;
+            break;
+        }
+    }
+
+    if (!relation_found) {
+        return std::unexpected(InvariantViolation{
+            .code = InvariantErrorCode::INV01_PrematureCertainty,
+            .invariant_id = "INV-01",
+            .message = "Violação de Integridade Referencial: A relação referenciada '" + relation_id + "' não existe no inventário da sessão.",
+            .corrective_hint = "Vincule a questão a uma relação candidata existente registrada no Movimento 2."
+        });
+    }
+
     auto val_prov = InvariantValidator::ValidateProvenance(question_text);
     if (!val_prov) return val_prov;
 

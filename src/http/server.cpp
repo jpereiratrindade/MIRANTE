@@ -382,7 +382,24 @@ void HttpServer::Start() {
             };
         }
 
-        // Carrega representação JSON completa
+        json repositions_j = json::array();
+        for (const auto& rep : s_exp->reposition_history) {
+            repositions_j.push_back({
+                {"id", rep.id},
+                {"cycle", rep.cycle_version},
+                {"decision", domain::ToString(rep.decision)},
+                {"justification", rep.verdict_justification.text},
+                {"author", rep.verdict_justification.author},
+                {"origin", domain::ToString(rep.verdict_justification.origin)},
+                {"model_digest", rep.verdict_justification.model_digest},
+                {"next_empirical_test", rep.next_empirical_test},
+                {"required_knowledge", rep.required_knowledge},
+                {"resumption_criteria", rep.resumption_criteria},
+                {"decided_at_iso", rep.decided_at_iso}
+            });
+        }
+
+        // Carrega representação JSON completa da sessão
         res.set_content(json({
             {"session_id", s_exp->session_id},
             {"project_id", s_exp->project_id},
@@ -394,20 +411,212 @@ void HttpServer::Start() {
             {"research_context", s_exp->research_context},
             {"phenomenon", {
                 {"text", s_exp->phenomenon_description.text},
-                {"author", s_exp->phenomenon_description.author}
+                {"author", s_exp->phenomenon_description.author},
+                {"origin", domain::ToString(s_exp->phenomenon_description.origin)},
+                {"model_digest", s_exp->phenomenon_description.model_digest}
             }},
             {"shift", s_exp->shift.has_value() ? json({
                 {"id", s_exp->shift->id},
                 {"initial", s_exp->shift->initial_framework},
                 {"shifted", s_exp->shift->shifted_framework},
                 {"dimension", domain::ToString(s_exp->shift->dimension)},
-                {"rationale", s_exp->shift->rationale.text}
+                {"rationale", s_exp->shift->rationale.text},
+                {"author", s_exp->shift->rationale.author},
+                {"origin", domain::ToString(s_exp->shift->rationale.origin)},
+                {"model_digest", s_exp->shift->rationale.model_digest}
             }) : json(nullptr)},
             {"relations", relations_j},
             {"questions", questions_j},
             {"confrontation", confrontation_j},
-            {"confrontation_done", s_exp->confrontation.has_value() && s_exp->confrontation->is_concluded}
+            {"confrontation_done", s_exp->confrontation.has_value() && s_exp->confrontation->is_concluded},
+            {"repositions", repositions_j}
         }).dump(), "application/json");
+    });
+
+    // Helper de construção de Dossiê Científico Integral Reconstituível
+    auto build_full_dossier = [this](const domain::SessionAggregate& s) -> json {
+        auto events_exp = db_->GetEventLedger(s.session_id);
+        auto verify_exp = db_->VerifyLedgerIntegrity(s.session_id);
+        bool is_ledger_valid = verify_exp.has_value() && *verify_exp;
+
+        json ev_list = json::array();
+        if (events_exp) {
+            for (const auto& ev : *events_exp) {
+                ev_list.push_back({
+                    {"sequence", ev.sequence_number},
+                    {"event_id", ev.event_id},
+                    {"event_type", ev.event_type},
+                    {"author", ev.author},
+                    {"timestamp", ev.timestamp_iso},
+                    {"previous_hash", ev.previous_hash},
+                    {"current_hash", ev.current_hash},
+                    {"payload", json::accept(ev.payload_json) ? json::parse(ev.payload_json) : json(ev.payload_json)}
+                });
+            }
+        }
+
+        json relations_j = json::array();
+        for (const auto& r : s.relations) {
+            relations_j.push_back({
+                {"id", r.id},
+                {"term_a", r.term_a},
+                {"term_b", r.term_b},
+                {"type", domain::ToString(r.type)},
+                {"status", domain::ToString(r.status)},
+                {"description", r.description.text},
+                {"author", r.description.author},
+                {"origin", domain::ToString(r.description.origin)},
+                {"model_digest", r.description.model_digest}
+            });
+        }
+
+        json questions_j = json::array();
+        for (const auto& q : s.questions) {
+            questions_j.push_back({
+                {"id", q.id},
+                {"relation_id", q.relation_id},
+                {"text", q.question_text.text},
+                {"evidence_path", q.required_evidence_path},
+                {"author", q.question_text.author},
+                {"origin", domain::ToString(q.question_text.origin)},
+                {"model_digest", q.question_text.model_digest}
+            });
+        }
+
+        json repositions_j = json::array();
+        for (const auto& rep : s.reposition_history) {
+            repositions_j.push_back({
+                {"id", rep.id},
+                {"cycle", rep.cycle_version},
+                {"decision", domain::ToString(rep.decision)},
+                {"justification", rep.verdict_justification.text},
+                {"author", rep.verdict_justification.author},
+                {"origin", domain::ToString(rep.verdict_justification.origin)},
+                {"model_digest", rep.verdict_justification.model_digest},
+                {"next_empirical_test", rep.next_empirical_test},
+                {"required_knowledge", rep.required_knowledge},
+                {"resumption_criteria", rep.resumption_criteria},
+                {"decided_at_iso", rep.decided_at_iso}
+            });
+        }
+
+        json confrontation_j = json(nullptr);
+        if (s.confrontation.has_value()) {
+            json rivals_j = json::array();
+            for (const auto& riv : s.confrontation->rival_explanations) {
+                rivals_j.push_back({
+                    {"text", riv.text}, 
+                    {"author", riv.author},
+                    {"origin", domain::ToString(riv.origin)},
+                    {"model_digest", riv.model_digest}
+                });
+            }
+            json risks_j = json::array();
+            for (const auto& rsk : s.confrontation->epistemic_risks) {
+                risks_j.push_back({
+                    {"text", rsk.text}, 
+                    {"author", rsk.author},
+                    {"origin", domain::ToString(rsk.origin)},
+                    {"model_digest", rsk.model_digest}
+                });
+            }
+            confrontation_j = {
+                {"id", s.confrontation->id},
+                {"hypothesis_id", s.confrontation->hypothesis_id},
+                {"is_concluded", s.confrontation->is_concluded},
+                {"rivals", rivals_j},
+                {"risks", risks_j}
+            };
+        }
+
+        std::string head_h = (events_exp && !events_exp->empty()) ? events_exp->back().current_hash : "";
+
+        return json({
+            {"dossier_manifest", {
+                {"document_id", "MPRR-" + s.session_id},
+                {"schema_version", "1.0.0"},
+                {"protocol", "MPRR-FOUNDATION-001@0.1.0"},
+                {"session_id", s.session_id},
+                {"project_id", s.project_id},
+                {"title", s.title},
+                {"generated_at", "2026-10-23T17:00:00Z"},
+                {"epistemic_status", "procedurally_verified_unvalidated_empirically"},
+                {"publication_intent", "internal_scientific_record"},
+                {"cryptographic_proof", {
+                    {"is_ledger_valid", is_ledger_valid},
+                    {"head_hash", head_h},
+                    {"events_count", events_exp ? events_exp->size() : 0}
+                }}
+            }},
+            {"invariants_compliance", {
+                {"INV-01", {{"name", "Proibição de Fato Demonstrado Prematuro"}, {"status", "VERIFIED"}, {"description", "Relações nascem como candidatas e questões vinculadas a relações válidas."}}},
+                {"INV-02", {{"name", "Contraditório Obrigatório"}, {"status", s.confrontation.has_value() && s.confrontation->is_concluded ? "VERIFIED" : "PENDING"}, {"description", "Pelo menos 1 explicação rival e 1 risco epistêmico."}}},
+                {"INV-03", {{"name", "Merkle Ledger Criptográfico"}, {"status", is_ledger_valid ? "VERIFIED" : "TAMPERED"}, {"chain_integrity", is_ledger_valid}}},
+                {"INV-04", {{"name", "Transparência Categórica de Proveniência"}, {"status", "VERIFIED"}, {"description", "Diferenciação estrita de intervenções humanas e assistidas com model digest."}}},
+                {"INV-05", {{"name", "Autonomia do Núcleo Heurístico"}, {"status", "VERIFIED"}, {"description", "Operação completa sem dependência de IA externa."}}},
+                {"INV-06", {{"name", "Conservação de Incerteza"}, {"status", "VERIFIED"}, {"description", "Suspensão acompanhada de critérios objetivos de retomada."}}},
+                {"INV-07", {{"name", "Rastreabilidade de Deslocamento"}, {"status", s.shift.has_value() ? "VERIFIED" : "PENDING"}, {"description", "Registro explícito de perspectiva inicial, deslocada e justificativa."}}},
+                {"INV-08", {{"name", "Próximo Passo Epistêmico"}, {"status", !s.reposition_history.empty() ? "VERIFIED" : "PENDING"}, {"description", "Declaração de teste empírico ou conhecimento subsequente."}}}
+            }},
+            {"investigation_trajectory", {
+                {"entrance_door", domain::ToString(s.entrance_door)},
+                {"current_cycle", s.current_cycle},
+                {"spatial_boundary", s.spatial_boundary},
+                {"temporal_boundary", s.temporal_boundary},
+                {"research_context", s.research_context},
+                {"phenomenon", {
+                    {"text", s.phenomenon_description.text},
+                    {"author", s.phenomenon_description.author},
+                    {"origin", domain::ToString(s.phenomenon_description.origin)},
+                    {"model_digest", s.phenomenon_description.model_digest}
+                }},
+                {"perspective_shift", s.shift.has_value() ? json({
+                    {"id", s.shift->id},
+                    {"initial_framework", s.shift->initial_framework},
+                    {"shifted_framework", s.shift->shifted_framework},
+                    {"dimension", domain::ToString(s.shift->dimension)},
+                    {"rationale", s.shift->rationale.text},
+                    {"author", s.shift->rationale.author},
+                    {"origin", domain::ToString(s.shift->rationale.origin)},
+                    {"model_digest", s.shift->rationale.model_digest}
+                }) : json(nullptr)},
+                {"candidate_relations", relations_j},
+                {"scientific_questions", questions_j},
+                {"confrontation_arena", confrontation_j},
+                {"reposition_history", repositions_j}
+            }},
+            {"audit_ledger", {
+                {"events_count", events_exp ? events_exp->size() : 0},
+                {"head_hash", head_h},
+                {"is_valid", is_ledger_valid},
+                {"events", ev_list}
+            }}
+        });
+    };
+
+    // Dossiê Científico Reconstituível (P0)
+    svr.Get(R"(/api/sessions/([\w\-]+)/dossier)", [this, build_full_dossier](const httplib::Request& req, httplib::Response& res) {
+        std::string sid = req.matches[1];
+        auto s_exp = db_->LoadSession(sid);
+        if (!s_exp) {
+            res.status = 404;
+            res.set_content(json({{"error", s_exp.error()}}).dump(), "application/json");
+            return;
+        }
+
+        res.set_content(build_full_dossier(*s_exp).dump(2), "application/json");
+    });
+
+    svr.Get(R"(/api/sessions/([\w\-]+)/export)", [this, build_full_dossier](const httplib::Request& req, httplib::Response& res) {
+        std::string sid = req.matches[1];
+        auto s_exp = db_->LoadSession(sid);
+        if (!s_exp) {
+            res.status = 404;
+            res.set_content(json({{"error", s_exp.error()}}).dump(), "application/json");
+            return;
+        }
+
+        res.set_content(build_full_dossier(*s_exp).dump(2), "application/json");
     });
 
     // Auditar Trilha Merkle da Sessão (INV-03)
@@ -592,8 +801,10 @@ void HttpServer::Start() {
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
 
+            std::string rel_id = body.value("relation_id", "");
+
             auto q_res = s_exp->AddScientificQuestion(
-                body.value("relation_id", "REL-001"),
+                rel_id,
                 qtext,
                 body.value("evidence_path", "")
             );

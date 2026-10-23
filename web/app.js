@@ -610,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const relListEl = document.getElementById('relationsList');
     const relSelectEl = document.getElementById('m3SelectRelation');
     if (relListEl) relListEl.innerHTML = "";
-    if (relSelectEl) relSelectEl.innerHTML = `<option value="REL-GERAL">Relação Geral do Ciclo</option>`;
+    if (relSelectEl) relSelectEl.innerHTML = `<option value="">-- Selecione uma Relação Candidata Registrada (Obrigatório) --</option>`;
 
     if (currentSessionData.relations && currentSessionData.relations.length > 0) {
       currentSessionData.relations.forEach(r => {
@@ -624,12 +624,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (relSelectEl) {
           const opt = document.createElement('option');
           opt.value = r.id;
-          opt.textContent = `${r.term_a} ↔ ${r.term_b}`;
+          opt.textContent = `[${r.id}] ${r.term_a} ↔ ${r.term_b}`;
           relSelectEl.appendChild(opt);
         }
       });
+      // Seleciona a relação mais recente por padrão
+      if (relSelectEl) {
+        relSelectEl.value = currentSessionData.relations[currentSessionData.relations.length - 1].id;
+      }
     } else if (relListEl) {
-      relListEl.innerHTML = `<div class="empty-hint">Nenhuma relação candidata registrada ainda.</div>`;
+      relListEl.innerHTML = `<div class="empty-hint">Nenhuma relação candidata registrada ainda no ciclo.</div>`;
     }
 
     // Preenche M3 (Questões)
@@ -640,7 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSessionData.questions.forEach(q => {
           const item = document.createElement('div');
           item.className = 'stack-item';
-          item.innerHTML = `<strong>Questão:</strong> ${q.text}<br><small><strong>Evidência necessária:</strong> ${q.evidence_path || 'A definir'}</small>`;
+          item.innerHTML = `<strong>Questão [vinculada a ${q.relation_id}]:</strong> ${q.text}<br><small><strong>Evidência necessária:</strong> ${q.evidence_path || 'A definir'}</small>`;
           qListEl.appendChild(item);
         });
       } else {
@@ -828,8 +832,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const qtext = document.getElementById('m3Question').value.trim();
     const evPath = document.getElementById('m3Evidence').value.trim();
-    const relId = document.getElementById('m3SelectRelation') ? document.getElementById('m3SelectRelation').value : "REL-GERAL";
+    const selElem = document.getElementById('m3SelectRelation');
+    const relId = selElem ? selElem.value.trim() : "";
     const author = (currentUser && (currentUser.name || currentUser.email)) || "Pesquisador";
+
+    if (!relId) {
+      alert("⚠️ Violação Metodológica (INV-01): Uma questão investigável deve estar estritamente vinculada a uma relação candidata registrada em M2. Registre uma relação em M2 ou selecione uma relação existente na lista.");
+      if (selElem) selElem.focus();
+      return;
+    }
 
     if (!qtext) {
       alert("Por favor, formule o enunciado da questão científica investigável.");
@@ -1584,32 +1595,38 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('sheetConfrontation').textContent = "Pendente de confronto obrigatório";
     }
 
-    document.getElementById('sheetReposition').textContent = `Ciclo ${s.current_cycle} em consolidação`;
+    if (s.repositions && s.repositions.length > 0) {
+      const repHtml = s.repositions.map(r => `<div><strong>Ciclo ${r.cycle} [${r.decision}]</strong>: ${r.justification || 'Sem justificativa'} <span style="font-size:0.75rem; color:var(--text-muted);">(${r.timestamp || ''})</span></div>`).join('');
+      document.getElementById('sheetReposition').innerHTML = repHtml;
+    } else {
+      document.getElementById('sheetReposition').textContent = `Ciclo ${s.current_cycle} (aguardando reposicionamento final)`;
+    }
     document.getElementById('sheetProvenance').textContent = `Núcleo C++26 | IA Local: ${selectLocalModel.value || 'Ollama'} | Integridade Procedimental Ativa`;
   }
 
-  // Exportar .sister-research.json
+  // Exportar .sister-research.json (Dossiê Científico Reconstituível)
   document.getElementById('btnExportJson').addEventListener('click', async () => {
-    const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}`);
-    const s = await res.json();
-    const manifest = {
-      document_id: `MPRR-${s.session_id}`,
-      version: `0.${s.current_cycle}.0`,
-      date: "2026-10-23",
-      document_kind: "mprr_research_session",
-      status: "procedurally_verified_unvalidated_empirically",
-      publication_intent: "internal_scientific_record",
-      method_reference: "MPRR-FOUNDATION-001@0.1.0",
-      research_project_reference: s.project_id,
-      session_data: s
-    };
+    if (!activeSessionId) {
+      alert("Por favor, selecione uma sessão para exportar.");
+      return;
+    }
 
-    const blob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${s.session_id}.sister-research.json`;
-    a.click();
+    try {
+      const res = await authFetch(`${API_BASE}/api/sessions/${activeSessionId}/dossier`);
+      if (!res.ok) {
+        alert("Erro ao recuperar o dossiê científico reconstituível da sessão.");
+        return;
+      }
+      const dossier = await res.json();
+      const blob = new Blob([JSON.stringify(dossier, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${activeSessionId}.sister-research.json`;
+      a.click();
+    } catch (e) {
+      alert("Falha na exportação: " + e.message);
+    }
   });
 
   init();
