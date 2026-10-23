@@ -812,8 +812,14 @@ std::string Database::RandomHex(size_t bytes) {
 }
 
 bool Database::SendOtpEmail(const std::string& to_email, const std::string& code, std::string& err_out) {
-    const char* smtp_host = std::getenv("MIRANTE_SMTP_HOST");
-    if (!smtp_host || std::strlen(smtp_host) == 0) {
+    auto get_env_val = [](const char* k1, const char* k2, const std::string& def) -> std::string {
+        if (const char* v1 = std::getenv(k1); v1 && std::strlen(v1) > 0) return v1;
+        if (const char* v2 = std::getenv(k2); v2 && std::strlen(v2) > 0) return v2;
+        return def;
+    };
+
+    std::string smtp_host = get_env_val("MIRANTE_SMTP_HOST", "SISTER_SMTP_HOST", "");
+    if (smtp_host.empty()) {
         std::cout << "\n========================================================" << std::endl;
         std::cout << " [AUTENTICAÇÃO SISTER] Código de Entrada para: " << to_email << std::endl;
         std::cout << " CÓDIGO TEMPORÁRIO (OTP): >>> " << code << " <<<" << std::endl;
@@ -822,10 +828,10 @@ bool Database::SendOtpEmail(const std::string& to_email, const std::string& code
         return true;
     }
 
-    std::string port = std::getenv("MIRANTE_SMTP_PORT") ? std::getenv("MIRANTE_SMTP_PORT") : "587";
-    std::string user = std::getenv("MIRANTE_SMTP_USER") ? std::getenv("MIRANTE_SMTP_USER") : "";
-    std::string pass = std::getenv("MIRANTE_SMTP_PASS") ? std::getenv("MIRANTE_SMTP_PASS") : "";
-    std::string from = std::getenv("MIRANTE_SMTP_FROM") ? std::getenv("MIRANTE_SMTP_FROM") : "mprr@labeco.invalid";
+    std::string port = get_env_val("MIRANTE_SMTP_PORT", "SISTER_SMTP_PORT", "587");
+    std::string user = get_env_val("MIRANTE_SMTP_USER", "SISTER_SMTP_USER", "");
+    std::string pass = get_env_val("MIRANTE_SMTP_PASS", "SISTER_SMTP_PASS", "");
+    std::string from = get_env_val("MIRANTE_SMTP_FROM", "SISTER_SMTP_FROM", "mprr@labeco.invalid");
 
     std::string temp_file = std::format("/tmp/mirante-otp-{}.eml", RandomHex(6));
     {
