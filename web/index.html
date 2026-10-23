@@ -187,7 +187,10 @@
                   <h2>Deslocamento Epistêmico de Perspectiva</h2>
                   <p>Explicite o enquadramento habitual de observação e force um salto de escala, tempo ou variáveis privilegiadas.</p>
                 </div>
-                <button type="button" class="button outline" id="btnAssistShift">✨ Assistência Local</button>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="button outline fill-llm-btn" id="btnDirectFillM1" title="O modelo local Ollama preenche os campos do Movimento 1 diretamente">⚡ Preencher com LLM Local</button>
+                  <button type="button" class="button outline" id="btnAssistShift">✨ Explorar no Drawer</button>
+                </div>
               </div>
 
               <div class="form-grid-2">
@@ -233,7 +236,10 @@
                   <h2>Exploração de Relações Candidatas</h2>
                   <p>Toda relação nasce compulsoriamente como CANDIDATA (INV-01). Proibido afirmar fato demonstrado na bancada.</p>
                 </div>
-                <button type="button" class="button outline" id="btnAssistRelation">✨ Assistência Heurística</button>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="button outline fill-llm-btn" id="btnDirectFillM2" title="O modelo local Ollama preenche os campos do Movimento 2 diretamente">⚡ Preencher com LLM Local</button>
+                  <button type="button" class="button outline" id="btnAssistRelation">✨ Explorar no Drawer</button>
+                </div>
               </div>
 
               <div class="form-grid-2">
@@ -279,7 +285,10 @@
                   <h2>Problematização e Formulação da Questão Investigável</h2>
                   <p>Transforme a relação candidata em uma pergunta científica com protocolo de teste empírico (INV-08).</p>
                 </div>
-                <button type="button" class="button outline" id="btnAssistQuestion">✨ Formulação Assistida</button>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                  <button type="button" class="button outline fill-llm-btn" id="btnDirectFillM3" title="O modelo local Ollama preenche os campos do Movimento 3 diretamente">⚡ Preencher com LLM Local</button>
+                  <button type="button" class="button outline" id="btnAssistQuestion">✨ Explorar no Drawer</button>
+                </div>
               </div>
 
               <div class="form-grid-2">
@@ -316,7 +325,10 @@
                 <h2>Arena de Confronto Crítico</h2>
                 <p>Nenhuma hipótese avança sem submissão formal a no mínimo UMA Explicação Rival e no mínimo UM Risco Epistêmico.</p>
               </div>
-              <button type="button" class="button outline" id="btnDevilsAdvocate">😈 Advogado do Diabo Local</button>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="button outline fill-llm-btn" id="btnDirectFillC4" title="O modelo local Ollama preenche explicações rivais e riscos epistêmicos diretamente">⚡ Preencher Arena com LLM</button>
+                <button type="button" class="button outline" id="btnDevilsAdvocate">😈 Advogado do Diabo Local</button>
+              </div>
             </div>
 
             <div id="devilsResponseBox" style="margin-bottom: 18px;"></div>
@@ -365,6 +377,9 @@
                 <span class="section-kicker">CONSERVAÇÃO DE INCERTEZA · INV-06 &amp; INV-08</span>
                 <h2>Decisão Epistêmica de Reposicionamento</h2>
                 <p>Consolide a postura frente às evidências e determine obrigatoriamente o próximo teste empírico.</p>
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <button type="button" class="button outline fill-llm-btn" id="btnDirectFillC5" title="O modelo local Ollama preenche os campos de reposicionamento diretamente">⚡ Preencher Reposicionamento com LLM</button>
               </div>
             </div>
 
@@ -543,6 +558,14 @@
         <button type="button" class="btn-close-dialog" id="btnCloseModal">&times;</button>
       </div>
       <div class="modal-dialog-body">
+        <div style="background: rgba(8, 127, 140, 0.06); border: 1px dashed #2ea8e8; border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; display: flex; gap: 8px; align-items: center;">
+          <span style="font-size: 1.1rem;">⚡</span>
+          <input type="text" id="nsPromptHint" placeholder="Tema ou semente para a investigação (ex: microbioma da rizosfera e estresse hídrico)..." style="flex: 1; padding: 7px 10px; font-size: 0.82rem; border-radius: 4px; border: 1px solid var(--line); background: #fff;">
+          <button type="button" class="button outline fill-llm-btn" id="btnDirectFillSession" style="padding: 7px 14px; font-size: 0.8rem; white-space: nowrap;">
+            Preencher com LLM Local
+          </button>
+        </div>
+
         <div class="form-grid-2">
           <div class="field-group">
             <label for="nsProjectId">Código do Projeto:</label>

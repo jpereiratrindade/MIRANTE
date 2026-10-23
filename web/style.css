@@ -1379,3 +1379,51 @@ main.workspace-body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==============================================================================
+   BOTÕES E EFEITOS DE PREENCHIMENTO DIRETO COM LLM LOCAL
+   ============================================================================== */
+
+.fill-llm-btn {
+  background: linear-gradient(135deg, rgba(8, 127, 140, 0.08), rgba(46, 168, 232, 0.15)) !important;
+  color: #074b83 !important;
+  border-color: #2ea8e8 !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 6px 14px !important;
+  font-size: 0.8rem !important;
+  border-radius: 8px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.fill-llm-btn:hover {
+  background: linear-gradient(135deg, #087f8c, #0c4a75) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(8, 127, 140, 0.28) !important;
+  transform: translateY(-1px) !important;
+}
+
+.fill-llm-btn.loading {
+  opacity: 0.65 !important;
+  pointer-events: none !important;
+  filter: grayscale(0.2);
+}
+
+.pulse-highlight {
+  animation: fieldPulseHighlight 1.8s ease-out;
+}
+
+@keyframes fieldPulseHighlight {
+  0% {
+    box-shadow: 0 0 0 3px rgba(46, 168, 232, 0.6);
+    background-color: rgba(46, 168, 232, 0.08);
+  }
+  100% {
+    box-shadow: none;
+    background-color: transparent;
+  }
+}
+

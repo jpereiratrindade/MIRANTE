@@ -757,38 +757,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Confronto (C4): Adicionar Rival
-  document.getElementById('btnAddRival').addEventListener('click', () => {
-    const text = document.getElementById('c4RivalText').value.trim();
-    if (!text) return;
-
-    rivalsList.push({ text: text, author: "Revisor Crítico" });
+  function addRivalItem(text, author = "Revisor Crítico") {
+    rivalsList.push({ text: text, author: author });
     const stack = document.getElementById('rivalsStack');
     const el = document.createElement('div');
-    el.className = 'stack-item';
-    el.innerHTML = `<strong>Rival ${rivalsList.length}:</strong> ${text}`;
+    el.className = 'stack-item pulse-highlight';
+    el.innerHTML = `<strong>Rival ${rivalsList.length} (${author}):</strong> ${text}`;
     stack.appendChild(el);
 
     document.getElementById('c4RivalText').value = "";
     document.getElementById('rivalCount').textContent = `${rivalsList.length} / 1`;
     checkConfrontationReadiness();
-  });
+  }
 
-  // Confronto (C4): Adicionar Risco
-  document.getElementById('btnAddRisk').addEventListener('click', () => {
-    const text = document.getElementById('c4RiskText').value.trim();
-    if (!text) return;
-
-    risksList.push({ text: text, author: "Revisor Crítico" });
+  function addRiskItem(text, author = "Revisor Crítico") {
+    risksList.push({ text: text, author: author });
     const stack = document.getElementById('risksStack');
     const el = document.createElement('div');
-    el.className = 'stack-item';
-    el.innerHTML = `<strong>Risco ${risksList.length}:</strong> ${text}`;
+    el.className = 'stack-item pulse-highlight';
+    el.innerHTML = `<strong>Risco ${risksList.length} (${author}):</strong> ${text}`;
     stack.appendChild(el);
 
     document.getElementById('c4RiskText').value = "";
     document.getElementById('riskCount').textContent = `${risksList.length} / 1`;
     checkConfrontationReadiness();
+  }
+
+  // Confronto (C4): Adicionar Rival
+  document.getElementById('btnAddRival').addEventListener('click', () => {
+    const text = document.getElementById('c4RivalText').value.trim();
+    if (text) addRivalItem(text, "Revisor Crítico");
+  });
+
+  // Confronto (C4): Adicionar Risco
+  document.getElementById('btnAddRisk').addEventListener('click', () => {
+    const text = document.getElementById('c4RiskText').value.trim();
+    if (text) addRiskItem(text, "Revisor Crítico");
   });
 
   function checkConfrontationReadiness() {
@@ -848,7 +852,332 @@ document.addEventListener('DOMContentLoaded', () => {
       const err = await res.json();
       alert(`⚠️ Violação de Invariante (${err.invariant || 'Erro'}): ${err.error}\n\nDica: ${err.hint || ''}`);
     }
-  });
+  // Helper para destacar campos preenchidos diretamente
+  function highlightField(el) {
+    if (!el) return;
+    el.classList.remove('pulse-highlight');
+    void el.offsetWidth;
+    el.classList.add('pulse-highlight');
+  }
+
+  // ----------------------------------------------------------------------
+  // PREENCHIMENTO DIRETO COM LLM LOCAL (M1, M2, M3, C4, C5, SESSÃO)
+  // ----------------------------------------------------------------------
+
+  // 1. Preenchimento Direto M1
+  const btnDirectFillM1 = document.getElementById('btnDirectFillM1');
+  if (btnDirectFillM1) {
+    btnDirectFillM1.addEventListener('click', async () => {
+      const origText = btnDirectFillM1.textContent;
+      btnDirectFillM1.classList.add('loading');
+      btnDirectFillM1.textContent = '⚡ Consultando LLM...';
+
+      const initialFw = document.getElementById('m1InitialFw').value.trim();
+      const phen = currentSessionData?.phenomenon?.text || initialFw || "Fenômeno e dinâmicas sistêmicas sob investigação";
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/m1`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            phenomenon: phen,
+            current_framework: initialFw,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        if (data.initial_framework && !initialFw) {
+          const el = document.getElementById('m1InitialFw');
+          el.value = data.initial_framework;
+          highlightField(el);
+        }
+        if (data.shifted_framework) {
+          const el = document.getElementById('m1ShiftedFw');
+          el.value = data.shifted_framework;
+          highlightField(el);
+        }
+        if (data.dimension) {
+          const el = document.getElementById('m1Dimension');
+          el.value = data.dimension;
+          highlightField(el);
+        }
+        if (data.rationale) {
+          const el = document.getElementById('m1Rationale');
+          el.value = `[ASSISTIDO: ${data.model || selectLocalModel.value}] ${data.rationale}`;
+          highlightField(el);
+        }
+      } catch (err) {
+        alert("Erro no preenchimento direto via LLM: " + err.message);
+      } finally {
+        btnDirectFillM1.classList.remove('loading');
+        btnDirectFillM1.textContent = origText;
+      }
+    });
+  }
+
+  // 2. Preenchimento Direto M2
+  const btnDirectFillM2 = document.getElementById('btnDirectFillM2');
+  if (btnDirectFillM2) {
+    btnDirectFillM2.addEventListener('click', async () => {
+      const origText = btnDirectFillM2.textContent;
+      btnDirectFillM2.classList.add('loading');
+      btnDirectFillM2.textContent = '⚡ Consultando LLM...';
+
+      const phen = currentSessionData?.phenomenon?.text || document.getElementById('m1InitialFw').value.trim() || "Fenômeno em estudo";
+      const shifted = document.getElementById('m1ShiftedFw').value.trim();
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/m2`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            phenomenon: phen,
+            shifted_framework: shifted,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        if (data.term_a) {
+          const el = document.getElementById('m2TermA');
+          el.value = data.term_a;
+          highlightField(el);
+        }
+        if (data.term_b) {
+          const el = document.getElementById('m2TermB');
+          el.value = data.term_b;
+          highlightField(el);
+        }
+        if (data.rel_type) {
+          const el = document.getElementById('m2RelType');
+          el.value = data.rel_type;
+          highlightField(el);
+        }
+        if (data.description) {
+          const el = document.getElementById('m2Description');
+          el.value = `[ASSISTIDO: ${data.model || selectLocalModel.value}] ${data.description}`;
+          highlightField(el);
+        }
+      } catch (err) {
+        alert("Erro no preenchimento direto via LLM: " + err.message);
+      } finally {
+        btnDirectFillM2.classList.remove('loading');
+        btnDirectFillM2.textContent = origText;
+      }
+    });
+  }
+
+  // 3. Preenchimento Direto M3
+  const btnDirectFillM3 = document.getElementById('btnDirectFillM3');
+  if (btnDirectFillM3) {
+    btnDirectFillM3.addEventListener('click', async () => {
+      const origText = btnDirectFillM3.textContent;
+      btnDirectFillM3.classList.add('loading');
+      btnDirectFillM3.textContent = '⚡ Consultando LLM...';
+
+      const rel = document.getElementById('m2Description').value.trim() || "Relação candidata do ciclo";
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/m3`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            relation: rel,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        if (data.question) {
+          const el = document.getElementById('m3Question');
+          el.value = data.question;
+          highlightField(el);
+        }
+        if (data.evidence_hint) {
+          const el = document.getElementById('m3Evidence');
+          el.value = data.evidence_hint;
+          highlightField(el);
+        }
+      } catch (err) {
+        alert("Erro no preenchimento direto via LLM: " + err.message);
+      } finally {
+        btnDirectFillM3.classList.remove('loading');
+        btnDirectFillM3.textContent = origText;
+      }
+    });
+  }
+
+  // 4. Preenchimento Direto C4 (Arena de Confronto)
+  const btnDirectFillC4 = document.getElementById('btnDirectFillC4');
+  if (btnDirectFillC4) {
+    btnDirectFillC4.addEventListener('click', async () => {
+      const origText = btnDirectFillC4.textContent;
+      btnDirectFillC4.classList.add('loading');
+      btnDirectFillC4.textContent = '⚡ Gerando Rivais e Riscos...';
+
+      const hipText = (currentSessionData?.questions && currentSessionData.questions.length > 0)
+        ? currentSessionData.questions[0].text
+        : (document.getElementById('m3Question').value.trim() || "Proposição relacional em análise");
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/confront`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            hypothesis: hipText,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        if (data.rival_hypothesis) {
+          addRivalItem(data.rival_hypothesis, data.rival_author || `Ollama [${selectLocalModel.value}]`);
+        }
+
+        if (data.risk_description) {
+          const riskEntry = `[${data.risk_type || 'RISCO'}] ${data.risk_description}` + 
+            (data.risk_mitigation ? ` (Mitigação: ${data.risk_mitigation})` : '');
+          addRiskItem(riskEntry, `Ollama [${selectLocalModel.value}]`);
+        }
+      } catch (err) {
+        alert("Erro no preenchimento da Arena via LLM: " + err.message);
+      } finally {
+        btnDirectFillC4.classList.remove('loading');
+        btnDirectFillC4.textContent = origText;
+      }
+    });
+  }
+
+  // 5. Preenchimento Direto C5 (Reposicionamento)
+  const btnDirectFillC5 = document.getElementById('btnDirectFillC5');
+  if (btnDirectFillC5) {
+    btnDirectFillC5.addEventListener('click', async () => {
+      const origText = btnDirectFillC5.textContent;
+      btnDirectFillC5.classList.add('loading');
+      btnDirectFillC5.textContent = '⚡ Sintetizando Reposicionamento...';
+
+      const hipText = (currentSessionData?.questions && currentSessionData.questions.length > 0)
+        ? currentSessionData.questions[0].text
+        : (document.getElementById('m3Question').value.trim() || "Proposição relacional sob escrutínio");
+
+      const rivalsSummary = rivalsList.map(r => r.text).join('; ') || "Nenhuma rival adicional registrada";
+      const risksSummary = risksList.map(r => r.text).join('; ') || "Nenhum risco adicional apontado";
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/reposition`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            hypothesis: hipText,
+            rivals_summary: rivalsSummary,
+            risks_summary: risksSummary,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        // Marca radio de decisão
+        if (data.decision) {
+          let radioVal = "REINFORCE";
+          if (data.decision === "ABANDON" || data.decision === "REJECT") radioVal = "ABANDON";
+          else if (data.decision === "SUSPEND" || data.decision === "REFORMULATE") radioVal = "SUSPEND";
+          const radio = document.querySelector(`input[name="repositionDecision"][value="${radioVal}"]`);
+          if (radio) {
+            radio.checked = true;
+            highlightField(radio.parentElement);
+          }
+        }
+
+        if (data.justification) {
+          const el = document.getElementById('c5Justification');
+          el.value = `[ASSISTIDO: ${data.model || selectLocalModel.value}] ${data.justification}`;
+          highlightField(el);
+        }
+        if (data.next_step) {
+          const el = document.getElementById('c5NextTest');
+          el.value = data.next_step;
+          highlightField(el);
+        }
+        if (data.required_knowledge) {
+          const el = document.getElementById('c5ReqKnowledge');
+          el.value = data.required_knowledge;
+          highlightField(el);
+        }
+      } catch (err) {
+        alert("Erro no preenchimento de Reposicionamento via LLM: " + err.message);
+      } finally {
+        btnDirectFillC5.classList.remove('loading');
+        btnDirectFillC5.textContent = origText;
+      }
+    });
+  }
+
+  // 6. Preenchimento Direto na Nova Sessão (Modal)
+  const btnDirectFillSession = document.getElementById('btnDirectFillSession');
+  if (btnDirectFillSession) {
+    btnDirectFillSession.addEventListener('click', async () => {
+      const origText = btnDirectFillSession.textContent;
+      btnDirectFillSession.classList.add('loading');
+      btnDirectFillSession.textContent = '⚡ Consultando LLM...';
+
+      const promptHint = document.getElementById('nsPromptHint')?.value.trim() || "";
+
+      try {
+        const res = await authFetch(`${API_BASE}/api/assist/fill/session`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            topic: promptHint,
+            model: selectLocalModel.value
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Falha na resposta do LLM.');
+
+        if (data.project_id) {
+          const el = document.getElementById('nsProjectId');
+          el.value = data.project_id;
+          highlightField(el);
+        }
+        if (data.title) {
+          const el = document.getElementById('nsTitle');
+          el.value = data.title;
+          highlightField(el);
+        }
+        if (data.entrance_door) {
+          const el = document.getElementById('nsDoor');
+          el.value = data.entrance_door === 'PORTA_A' ? 'PATH_A_KNOWLEDGE_TO_PHENOMENON' : 'PATH_B_PHENOMENON_TO_KNOWLEDGE';
+          highlightField(el);
+        }
+        if (data.phenomenon) {
+          const el = document.getElementById('nsPhenomenon');
+          el.value = data.phenomenon;
+          highlightField(el);
+        }
+        if (data.spatial) {
+          const el = document.getElementById('nsSpatial');
+          el.value = data.spatial;
+          highlightField(el);
+        }
+        if (data.temporal) {
+          const el = document.getElementById('nsTemporal');
+          el.value = data.temporal;
+          highlightField(el);
+        }
+      } catch (err) {
+        alert("Erro ao preencher com LLM: " + err.message);
+      } finally {
+        btnDirectFillSession.classList.remove('loading');
+        btnDirectFillSession.textContent = origText;
+      }
+    });
+  }
 
   // Assistência Local: M1 (Deslocamento)
   document.getElementById('btnAssistShift').addEventListener('click', async () => {

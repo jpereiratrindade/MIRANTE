@@ -793,6 +793,158 @@ void HttpServer::Start() {
         }
     });
 
+    // ------------------------------------------------------------------
+    // Endpoints de Preenchimento Direto Estruturado com LLM Local
+    // ------------------------------------------------------------------
+    svr.Post("/api/assist/fill/m1", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillM1(body.value("phenomenon", ""), body.value("current_framework", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/fill/m2", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillM2(body.value("phenomenon", ""), body.value("shifted_framework", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/fill/m3", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillM3(body.value("relation", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/fill/confront", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillConfront(body.value("hypothesis", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/fill/reposition", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillReposition(
+                body.value("hypothesis", ""),
+                body.value("rivals_summary", ""),
+                body.value("risks_summary", ""),
+                model
+            );
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
+    svr.Post("/api/assist/fill/session", [this](const httplib::Request& req, httplib::Response& res) {
+        if (!ollama_ || !ollama_->IsOnline()) {
+            res.status = 503;
+            res.set_content(json({{"error", "Daemon Ollama local offline."}}).dump(), "application/json");
+            return;
+        }
+        try {
+            json body = json::parse(req.body);
+            std::string model = body.value("model", "qwen2.5:14b");
+            auto r = ollama_->FillSession(body.value("topic", ""), model);
+            if (!r) {
+                res.status = 500;
+                res.set_content(json({{"error", r.error()}}).dump(), "application/json");
+                return;
+            }
+            json resp = *r;
+            resp["model"] = model;
+            res.set_content(resp.dump(), "application/json");
+        } catch (const std::exception& e) {
+            res.status = 400;
+            res.set_content(json({{"error", e.what()}}).dump(), "application/json");
+        }
+    });
+
     // Servir Arquivos Estáticos da Web
     if (std::filesystem::exists(web_dir_)) {
         svr.set_mount_point("/", web_dir_);

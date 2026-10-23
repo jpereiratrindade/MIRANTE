@@ -63,7 +63,8 @@ std::expected<std::string, std::string> OllamaClient::Generate(
     const std::string& model, 
     const std::string& prompt,
     const std::string& system_prompt,
-    float temperature
+    float temperature,
+    bool json_format
 ) {
     httplib::Client cli(host_, port_);
     cli.set_connection_timeout(std::chrono::seconds(5));
@@ -74,6 +75,9 @@ std::expected<std::string, std::string> OllamaClient::Generate(
     payload["prompt"] = prompt;
     payload["system"] = system_prompt.empty() ? kMiranteSystemPrompt : system_prompt;
     payload["stream"] = false;
+    if (json_format) {
+        payload["format"] = "json";
+    }
     payload["options"] = {
         {"temperature", temperature},
         {"top_p", 0.9}
@@ -92,6 +96,29 @@ std::expected<std::string, std::string> OllamaClient::Generate(
         return resp_j.value("response", "");
     } catch (const std::exception& e) {
         return std::unexpected(std::string("Erro no parse da resposta: ") + e.what());
+    }
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::GenerateJson(
+    const std::string& model,
+    const std::string& prompt,
+    const std::string& system_prompt,
+    float temperature
+) {
+    auto res = Generate(model, prompt, system_prompt, temperature, true);
+    if (!res) return std::unexpected(res.error());
+
+    std::string text = *res;
+    size_t first = text.find('{');
+    size_t last = text.rfind('}');
+    if (first != std::string::npos && last != std::string::npos && last >= first) {
+        text = text.substr(first, last - first + 1);
+    }
+
+    try {
+        return json::parse(text);
+    } catch (const std::exception& e) {
+        return std::unexpected(std::string("Falha ao analisar JSON retornado pelo modelo local: ") + e.what() + " | Conteúdo: " + *res);
     }
 }
 
@@ -173,6 +200,169 @@ Submeta essa hipótese a escrutínio rigoroso:
     );
 
     return Generate(model, prompt, kMiranteSystemPrompt, 0.25f);
+}
+
+// ----------------------------------------------------------------------
+// Métodos de Preenchimento Direto Estruturado (JSON)
+// ----------------------------------------------------------------------
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillM1(
+    const std::string& phenomenon,
+    const std::string& current_framework,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é um assistente científico de alto nível operando no protocolo MPRR (Método de Percepção Relacional e Redescrição).
+O pesquisador deseja que você preencha DIRETAMENTE o formulário do Movimento 1 (M1 — Deslocamento Epistêmico).
+
+Fenômeno investigado: "{}"
+Enquadramento habitual / perspectiva inicial: "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON (sem markdown, sem preâmbulo) com a estrutura:
+{{
+  "initial_framework": "descrição concisa e situada do enquadramento habitual e pressupostos dominantes",
+  "shifted_framework": "nova perspectiva de observação explicitamente deslocada da convencional",
+  "dimension": "SCALE",
+  "rationale": "justificativa metodológica concisa de por que essa perspectiva revela aspectos ocultos"
+}}
+
+Para o campo "dimension", escolha exatamente um de: "SCALE", "TEMPORAL", "AGENT", "BOUNDARY", "PRIVILEGED_VARIABLE".)PROMPT",
+        phenomenon.empty() ? "Dinâmica sistêmica em estudo" : phenomenon,
+        current_framework.empty() ? "Enquadramento convencional da literatura" : current_framework
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.50f);
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillM2(
+    const std::string& phenomenon,
+    const std::string& shifted_framework,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é um assistente científico no protocolo MPRR (Movimento 2 — Exploração de Relações Candidatas).
+O pesquisador deseja que você preencha DIRETAMENTE o formulário do Movimento 2 (M2). Toda relação nasce compulsoriamente como CANDIDATA.
+
+Fenômeno: "{}"
+Perspectiva deslocada de observação (M1): "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON com a estrutura:
+{{
+  "term_a": "Componente ou termo A observado",
+  "term_b": "Componente ou termo B correlacionado",
+  "rel_type": "FEEDBACK_LOOP",
+  "description": "descrição relacional conjeturada conectando os termos sob a nova perspectiva"
+}}
+
+Para o campo "rel_type", escolha exatamente um de: "MODULATION", "FEEDBACK_LOOP", "THRESHOLD", "TRADE_OFF", "CAUSAL_HYPOTHESIS".)PROMPT",
+        phenomenon.empty() ? "Fenômeno em estudo" : phenomenon,
+        shifted_framework.empty() ? "Perspectiva sistêmica relacional" : shifted_framework
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.50f);
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillM3(
+    const std::string& relation_text,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é um assistente científico no protocolo MPRR (Movimento 3 — Problematização Heurística).
+O pesquisador deseja que você preencha DIRETAMENTE o formulário do Movimento 3 (M3), transformando a relação em pergunta investigável e falseável.
+
+Relação candidata: "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON com a estrutura:
+{{
+  "question": "Enunciado interrogativo claro, contestável e empiricamente investigável",
+  "evidence_hint": "morfo://amostras/protocolo-teste.csv ou tipo de rastro empírico exigido"
+}})PROMPT",
+        relation_text.empty() ? "Relação candidata entre componentes sistêmicos" : relation_text
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.40f);
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillConfront(
+    const std::string& hypothesis,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é o ADVOGADO DO DIABO no protocolo MPRR (Controle C4 — Arena de Confronto Crítico).
+O pesquisador deseja que você preencha DIRETAMENTE a Arena de Confronto, gerando ao menos uma explicação rival e um risco epistêmico.
+
+Hipótese científica formulada: "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON com a estrutura:
+{{
+  "rival_hypothesis": "Explicação rival plausível alternativa que explicaria os indícios sem invocar a hipótese proposta",
+  "rival_author": "Ollama [Advogado do Diabo]",
+  "risk_type": "CONFIRMATION_BIAS",
+  "risk_description": "Descrição analítica do risco de erro epistêmico (ex: correlação espúria por variável de confusão não controlada)",
+  "risk_mitigation": "Procedimento metodológico ou teste de contraste para mitigar o risco apontado"
+}}
+
+Para o campo "risk_type", escolha exatamente um de: "CONFIRMATION_BIAS", "OVERFITTING", "CONCEPTUAL_STRETCHING", "EQUIVOCATION", "DATA_SPARSITY".)PROMPT",
+        hypothesis.empty() ? "Hipótese de relação sistêmica proposta" : hypothesis
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.30f);
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillReposition(
+    const std::string& hypothesis,
+    const std::string& rivals_summary,
+    const std::string& risks_summary,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é o assistente de síntese metodológica no protocolo MPRR (Controle C5 — Reposicionamento).
+O pesquisador deseja que você preencha DIRETAMENTE a deliberação de reposicionamento com base no confronto realizado.
+
+Hipótese: "{}"
+Rivais consideradas: "{}"
+Riscos avaliados: "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON com a estrutura:
+{{
+  "decision": "DEVELOP",
+  "justification": "Síntese rigorosa justificando a decisão metodológica",
+  "next_step": "Próximo passo empírico ou protocolo concreto de teste",
+  "required_knowledge": "Lacuna de conhecimento teórico ou empírico que precisa ser preenchida",
+  "resumption_criteria": "Critério explícito para retomar caso seja suspensa, ou N/A se desenvolvida"
+}}
+
+Para "decision", escolha exatamente um de: "DEVELOP", "REFORMULATE", "SUSPEND", "REJECT", "SUSTAINED_BY_SPECIFIC_EVIDENCE".)PROMPT",
+        hypothesis, rivals_summary, risks_summary
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.35f);
+}
+
+std::expected<nlohmann::json, std::string> OllamaClient::FillSession(
+    const std::string& topic_hint,
+    const std::string& model
+) {
+    std::string prompt = std::format(
+R"PROMPT(Você é um planejador de pesquisa científica no protocolo MPRR do ecossistema SisTer / LABECO.
+O pesquisador deseja preencher DIRETAMENTE uma nova investigação na bancada epistêmica.
+Semente ou tema de interesse: "{}"
+
+Gere uma resposta ESTRITAMENTE em formato JSON com a estrutura:
+{{
+  "project_id": "PRJ-SISTER",
+  "title": "Título conciso e estimulante da investigação",
+  "entrance_door": "PORTA_B",
+  "phenomenon": "Descrição rica, situada e detalhada do fenômeno ou anomalia a investigar",
+  "spatial": "Delimitação espacial ou do sistema sob observação",
+  "temporal": "Delimitação temporal ou do horizonte histórico sob observação"
+}}
+
+Para "entrance_door", escolha: "PORTA_A" (anomalia empírica), "PORTA_B" (deslocamento conceitual) ou "PORTA_C" (tensão epistêmica).)PROMPT",
+        topic_hint.empty() ? "Resiliência socioecológica e dinâmicas agroflorestais" : topic_hint
+    );
+
+    return GenerateJson(model, prompt, kMiranteSystemPrompt, 0.50f);
 }
 
 } // namespace mirante::assist
