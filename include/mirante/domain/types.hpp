@@ -163,12 +163,12 @@ inline std::string_view ToString(SessionState s) {
 }
 
 struct ProvenancedText {
-    std::string text;
+    std::string text{};
     ProvenanceOrigin origin{ProvenanceOrigin::Human};
-    std::string author; // Nome do pesquisador ou ID do modelo
-    std::string model_digest; // SHA-256 dos pesos se for ASSISTIDO
-    std::string citation; // Fonte se for IMPORTADO/EVIDÊNCIA
-    std::string timestamp_iso;
+    std::string author{}; // Nome do pesquisador ou ID do modelo
+    std::string model_digest{}; // SHA-256 dos pesos se for ASSISTIDO
+    std::string citation{}; // Fonte se for IMPORTADO/EVIDÊNCIA
+    std::string timestamp_iso{};
 };
 
 } // namespace mirante::domain

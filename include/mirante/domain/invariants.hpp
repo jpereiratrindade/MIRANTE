@@ -28,8 +28,9 @@ struct InvariantViolation {
 
 class InvariantValidator {
 public:
-    // INV-01: Proibição de Fato Demonstrado Prematuro
-    static std::expected<void, InvariantViolation> ValidateRelationStatus(RelationStatus status, const std::string& formulation);
+    // INV-01: Proibição de Fato Demonstrado Prematuro (Garantia de Estado no Domínio)
+    // O sistema disciplina a tipagem e o estado da relação; não censura o léxico da prosa humana.
+    static std::expected<void, InvariantViolation> ValidateRelationStatus(RelationStatus status);
 
     // INV-02: Obrigatoriedade do Contraditório no Reposicionamento
     static std::expected<void, InvariantViolation> ValidateConfrontationCompleteness(

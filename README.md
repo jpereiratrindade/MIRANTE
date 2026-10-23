@@ -55,42 +55,73 @@ O MIRANTE herda os tokens visuais consolidados na família de software SisTer:
 
 ## 5. Arquitetura Técnica C++26
 
-O backend é modularizado em bibliotecas C++26 com servidor HTTP/WebSocket embutido (Boost.Asio/Beast) e persistência auditável via SQLite3:
+O backend é modularizado em bibliotecas C++26 com servidor HTTP embutido multithread (`cpp-httplib`), persistência transacional auditável via SQLite3 (com Merkle-chain hashing SHA-256) e integração assíncrona desacoplada ao daemon local Ollama:
 
 ```text
 MIRANTE/
 ├── CMakeLists.txt
 ├── README.md
 ├── docs/
-│   ├── MPRR-UX-001.md
-│   ├── MPRR-INV-001.md
-│   └── MPRR-AST-001.md
+│   ├── MPRR-UX-001.md         (Especificação Canônica da Experiência e Interface)
+│   ├── MPRR-INV-001.md        (Especificação Formal de Invariantes e Contratos)
+│   └── MPRR-AST-001.md        (Especificação do Motor de Assistência Local)
 ├── include/
 │   └── mirante/
-│       ├── domain/        (Entidades, agregados, invariantes do MPRR)
-│       ├── application/   (Casos de uso: condução de sessão, consolidação, confronto)
-│       ├── storage/       (Repositório SQLite3 com ledger de eventos)
-│       ├── assist/        (Interface desacoplada de IA: IAssistProvider)
-│       ├── export/        (Exportadores JSON canônico, HTML e PDF)
-│       └── http/          (Endpoints REST/JSON e static file server)
+│       ├── domain/            (Entidades, agregados, tipos e invariantes INV-01 a INV-08)
+│       ├── storage/           (Repositório SQLite3 com ledger de eventos e cadeia Merkle)
+│       ├── assist/            (Cliente Ollama desacoplado e prompts metodológicos)
+│       └── http/              (Endpoints REST/JSON e servidor de arquivos web)
 ├── src/
 │   ├── domain/
-│   ├── application/
 │   ├── storage/
 │   ├── assist/
-│   ├── export/
 │   ├── http/
 │   └── main.cpp
-├── web/                   (Interface web SisTer: HTML5, CSS3 puro, ES6 modular)
+├── web/                       (Interface web SisTer: HTML5 semântico, CSS3 e JS nativo)
 │   ├── index.html
 │   ├── style.css
-│   └── js/
-└── tests/                 (Testes unitários de invariantes e testes de integração)
+│   └── app.js
+├── tests/                     (Testes de integridade, transações atômicas e invariantes)
+└── third_party/               (cpp-httplib e nlohmann/json)
 ```
 
 ---
 
-## 6. Licença e Autoria
+## 6. Compilação, Testes e Execução
+
+### Requisitos
+- Compilador C++26 (`g++` >= 14 ou `clang++` >= 18)
+- CMake >= 3.25
+- SQLite3 (`libsqlite3-dev` / `sqlite-devel`)
+- OpenSSL (`libssl-dev` / `openssl-devel`)
+- Ollama local (opcional, para assistência com IA local)
+
+### Compilação
+```bash
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+### Executar a Bateria de Testes
+```bash
+./build/mirante-tests
+```
+
+### Iniciar o Servidor
+```bash
+# Execução padrão (escuta em 0.0.0.0:8088 para acesso em rede local):
+./build/mirante-server --host 0.0.0.0 --port 8088
+
+# Com token de autenticação opcional:
+MIRANTE_API_TOKEN="meu-token-seguro" ./build/mirante-server --host 0.0.0.0 --port 8088
+```
+
+A interface pode ser acessada em qualquer navegador da rede em: `http://localhost:8088` ou `http://<ip-do-servidor>:8088`.
+
+---
+
+## 7. Licença e Autoria
 
 - **Copyright (C) 2026 José Pedro Trindade / Ecossistema SisTer**
 - Software Científico Livre — Licença GPL v3.0.

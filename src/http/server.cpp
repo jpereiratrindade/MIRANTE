@@ -83,8 +83,30 @@ void HttpServer::Start() {
         res.set_content(j.dump(), "application/json");
     });
 
+    // Helper de Autenticação Opcional (P0)
+    auto check_auth = [](const httplib::Request& req, httplib::Response& res) -> bool {
+        const char* env_token = std::getenv("MIRANTE_API_TOKEN");
+        if (!env_token || std::strlen(env_token) == 0) {
+            return true; // Autenticação desabilitada se nenhum token for configurado no ambiente
+        }
+        std::string token = req.get_header_value("X-Mirante-Token");
+        if (token.empty()) {
+            std::string auth = req.get_header_value("Authorization");
+            if (auth.starts_with("Bearer ")) {
+                token = auth.substr(7);
+            }
+        }
+        if (token != env_token) {
+            res.status = 401;
+            res.set_content(json({{"error", "Acesso não autorizado: token ausente ou inválido."}}).dump(), "application/json");
+            return false;
+        }
+        return true;
+    };
+
     // Criar Nova Sessão
-    svr.Post("/api/sessions", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post("/api/sessions", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         try {
             json body = json::parse(req.body);
             domain::SessionAggregate s;
@@ -105,17 +127,15 @@ void HttpServer::Start() {
             s.phenomenon_description.author = body.value("author", "Pesquisador");
             s.phenomenon_description.origin = domain::ProvenanceOrigin::Human;
 
-            auto save_res = db_->SaveSession(s);
+            auto save_res = db_->SaveSessionWithEvent(s, "SESSION_CREATED", body.dump(), s.phenomenon_description.author);
             if (!save_res) {
                 res.status = 500;
-                res.set_content(json({{"error", save_res.error()}}).dump(), "application/json");
+                res.set_content(json({{"error", "Falha atômica ao criar sessão: " + save_res.error()}}).dump(), "application/json");
                 return;
             }
 
-            db_->AppendEvent(s.session_id, "SESSION_CREATED", body.dump(), s.phenomenon_description.author);
-
             res.status = 201;
-            res.set_content(json({{"session_id", s.session_id}}).dump(), "application/json");
+            res.set_content(json({{"session_id", s.session_id}, {"merkle_hash", *save_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
@@ -204,7 +224,8 @@ void HttpServer::Start() {
     });
 
     // M1: Registrar Deslocamento
-    svr.Post(R"(/api/sessions/([\w\-]+)/shift)", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/shift)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
         if (!s_exp) { res.status = 404; return; }
@@ -236,10 +257,14 @@ void HttpServer::Start() {
                 return;
             }
 
-            db_->SaveSession(*s_exp);
-            db_->AppendEvent(sid, "M1_PERSPECTIVE_SHIFT", body.dump(), rationale.author);
+            auto tx_res = db_->SaveSessionWithEvent(*s_exp, "M1_PERSPECTIVE_SHIFT", body.dump(), rationale.author);
+            if (!tx_res) {
+                res.status = 500;
+                res.set_content(json({{"error", "Falha na transação atômica de persistência: " + tx_res.error()}}).dump(), "application/json");
+                return;
+            }
 
-            res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+            res.set_content(json({{"status", "ok"}, {"merkle_hash", *tx_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
@@ -247,7 +272,8 @@ void HttpServer::Start() {
     });
 
     // M2: Adicionar Relação Candidata
-    svr.Post(R"(/api/sessions/([\w\-]+)/relation)", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/relation)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
         if (!s_exp) { res.status = 404; return; }
@@ -259,6 +285,7 @@ void HttpServer::Start() {
                 .origin = body.value("is_assisted", false) ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
                 .model_digest = body.value("model_digest", ""),
+                .citation = "",
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
 
@@ -279,10 +306,14 @@ void HttpServer::Start() {
                 return;
             }
 
-            db_->SaveSession(*s_exp);
-            db_->AppendEvent(sid, "M2_CANDIDATE_RELATION", body.dump(), desc.author);
+            auto tx_res = db_->SaveSessionWithEvent(*s_exp, "M2_CANDIDATE_RELATION", body.dump(), desc.author);
+            if (!tx_res) {
+                res.status = 500;
+                res.set_content(json({{"error", "Falha na transação atômica de persistência: " + tx_res.error()}}).dump(), "application/json");
+                return;
+            }
 
-            res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+            res.set_content(json({{"status", "ok"}, {"merkle_hash", *tx_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
@@ -290,7 +321,8 @@ void HttpServer::Start() {
     });
 
     // M3: Adicionar Questão Científica
-    svr.Post(R"(/api/sessions/([\w\-]+)/question)", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/question)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
         if (!s_exp) { res.status = 404; return; }
@@ -302,6 +334,7 @@ void HttpServer::Start() {
                 .origin = body.value("is_assisted", false) ? domain::ProvenanceOrigin::Assisted : domain::ProvenanceOrigin::Human,
                 .author = body.value("author", "Pesquisador"),
                 .model_digest = body.value("model_digest", ""),
+                .citation = "",
                 .timestamp_iso = "2026-10-23T14:00:00Z"
             };
 
@@ -321,10 +354,14 @@ void HttpServer::Start() {
                 return;
             }
 
-            db_->SaveSession(*s_exp);
-            db_->AppendEvent(sid, "M3_SCIENTIFIC_QUESTION", body.dump(), qtext.author);
+            auto tx_res = db_->SaveSessionWithEvent(*s_exp, "M3_SCIENTIFIC_QUESTION", body.dump(), qtext.author);
+            if (!tx_res) {
+                res.status = 500;
+                res.set_content(json({{"error", "Falha na transação atômica de persistência: " + tx_res.error()}}).dump(), "application/json");
+                return;
+            }
 
-            res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+            res.set_content(json({{"status", "ok"}, {"merkle_hash", *tx_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
@@ -332,7 +369,8 @@ void HttpServer::Start() {
     });
 
     // C4: Registrar Confronto
-    svr.Post(R"(/api/sessions/([\w\-]+)/confront)", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/confront)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
         if (!s_exp) { res.status = 404; return; }
@@ -375,10 +413,14 @@ void HttpServer::Start() {
                 return;
             }
 
-            db_->SaveSession(*s_exp);
-            db_->AppendEvent(sid, "C4_CONFRONTATION_RECORDED", body.dump(), "Revisor Crítico");
+            auto tx_res = db_->SaveSessionWithEvent(*s_exp, "C4_CONFRONTATION_RECORDED", body.dump(), "Revisor Crítico");
+            if (!tx_res) {
+                res.status = 500;
+                res.set_content(json({{"error", "Falha na transação atômica de persistência: " + tx_res.error()}}).dump(), "application/json");
+                return;
+            }
 
-            res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+            res.set_content(json({{"status", "ok"}, {"merkle_hash", *tx_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
@@ -386,7 +428,8 @@ void HttpServer::Start() {
     });
 
     // C5: Consolidar Reposicionamento
-    svr.Post(R"(/api/sessions/([\w\-]+)/reposition)", [this](const httplib::Request& req, httplib::Response& res) {
+    svr.Post(R"(/api/sessions/([\w\-]+)/reposition)", [this, check_auth](const httplib::Request& req, httplib::Response& res) {
+        if (!check_auth(req, res)) return;
         std::string sid = req.matches[1];
         auto s_exp = db_->LoadSession(sid);
         if (!s_exp) { res.status = 404; return; }
@@ -425,10 +468,14 @@ void HttpServer::Start() {
                 return;
             }
 
-            db_->SaveSession(*s_exp);
-            db_->AppendEvent(sid, "C5_REPOSITION_CONSOLIDATED", body.dump(), just.author);
+            auto tx_res = db_->SaveSessionWithEvent(*s_exp, "C5_REPOSITION_CONSOLIDATED", body.dump(), just.author);
+            if (!tx_res) {
+                res.status = 500;
+                res.set_content(json({{"error", "Falha na transação atômica de persistência: " + tx_res.error()}}).dump(), "application/json");
+                return;
+            }
 
-            res.set_content(json({{"status", "ok"}}).dump(), "application/json");
+            res.set_content(json({{"status", "ok"}, {"merkle_hash", *tx_res}}).dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");

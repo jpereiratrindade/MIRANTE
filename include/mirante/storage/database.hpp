@@ -27,6 +27,14 @@ public:
     std::expected<domain::SessionAggregate, std::string> LoadSession(const std::string& session_id);
     std::expected<std::vector<domain::SessionAggregate>, std::string> ListSessions();
 
+    // Transação Atômica: Salvar Estado e Registrar Evento no Ledger (Garantia P0)
+    std::expected<std::string, std::string> SaveSessionWithEvent(
+        const domain::SessionAggregate& session,
+        const std::string& event_type,
+        const std::string& payload_json,
+        const std::string& author
+    );
+
     // Ledger Imutável de Eventos (Merkle-Chain INV-03)
     std::expected<std::string, std::string> AppendEvent(
         const std::string& session_id,

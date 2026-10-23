@@ -37,7 +37,7 @@ std::expected<void, InvariantViolation> SessionAggregate::AddCandidateRelation(
     RelationType rel_type,
     const ProvenancedText& description
 ) {
-    auto val_status = InvariantValidator::ValidateRelationStatus(RelationStatus::Candidate, description.text);
+    auto val_status = InvariantValidator::ValidateRelationStatus(RelationStatus::Candidate);
     if (!val_status) return val_status;
 
     auto val_prov = InvariantValidator::ValidateProvenance(description);
@@ -169,6 +169,7 @@ std::expected<void, InvariantViolation> SessionAggregate::ConsolidateReposition(
     }
 
     state = SessionState::CycleConsolidated;
+    current_cycle++;
     return {};
 }
 

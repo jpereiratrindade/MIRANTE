@@ -318,6 +318,216 @@ std::expected<void, std::string> Database::SaveSession(const domain::SessionAggr
     return {};
 }
 
+std::expected<std::string, std::string> Database::SaveSessionWithEvent(
+    const domain::SessionAggregate& session,
+    const std::string& event_type,
+    const std::string& payload_json,
+    const std::string& author
+) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!db_) return std::unexpected("Banco de dados não aberto");
+
+    char* err_msg = nullptr;
+    if (sqlite3_exec(db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+        std::string err = err_msg ? err_msg : "Erro ao iniciar transação SQLite";
+        sqlite3_free(err_msg);
+        return std::unexpected(err);
+    }
+
+    // 1. Gravar Sessão
+    json j;
+    j["session_id"] = session.session_id;
+    j["project_id"] = session.project_id;
+    j["title"] = session.title;
+    j["entrance_door"] = domain::ToString(session.entrance_door);
+    j["state"] = domain::ToString(session.state);
+    j["current_cycle"] = session.current_cycle;
+    j["spatial_boundary"] = session.spatial_boundary;
+    j["temporal_boundary"] = session.temporal_boundary;
+    j["research_context"] = session.research_context;
+    j["participants"] = session.participants;
+    j["initial_sources"] = session.initial_sources;
+
+    j["phenomenon"] = {
+        {"text", session.phenomenon_description.text},
+        {"author", session.phenomenon_description.author},
+        {"origin", domain::ToString(session.phenomenon_description.origin)}
+    };
+
+    if (session.shift.has_value()) {
+        j["shift"] = {
+            {"id", session.shift->id},
+            {"initial_framework", session.shift->initial_framework},
+            {"shifted_framework", session.shift->shifted_framework},
+            {"dimension", domain::ToString(session.shift->dimension)},
+            {"rationale", session.shift->rationale.text},
+            {"author", session.shift->rationale.author},
+            {"origin", domain::ToString(session.shift->rationale.origin)}
+        };
+    }
+
+    j["relations"] = json::array();
+    for (const auto& r : session.relations) {
+        j["relations"].push_back({
+            {"id", r.id},
+            {"term_a", r.term_a},
+            {"term_b", r.term_b},
+            {"type", domain::ToString(r.type)},
+            {"status", domain::ToString(r.status)},
+            {"description", r.description.text},
+            {"author", r.description.author},
+            {"origin", domain::ToString(r.description.origin)}
+        });
+    }
+
+    j["questions"] = json::array();
+    for (const auto& q : session.questions) {
+        j["questions"].push_back({
+            {"id", q.id},
+            {"relation_id", q.relation_id},
+            {"text", q.question_text.text},
+            {"evidence_path", q.required_evidence_path},
+            {"author", q.question_text.author},
+            {"origin", domain::ToString(q.question_text.origin)}
+        });
+    }
+
+    j["hypotheses"] = json::array();
+    for (const auto& h : session.hypotheses) {
+        j["hypotheses"].push_back({
+            {"id", h.id},
+            {"question_id", h.question_id},
+            {"formulation", h.formulation.text},
+            {"status", domain::ToString(h.status)},
+            {"cycle_version", h.cycle_version}
+        });
+    }
+
+    if (session.confrontation.has_value()) {
+        json j_conf;
+        j_conf["id"] = session.confrontation->id;
+        j_conf["hypothesis_id"] = session.confrontation->hypothesis_id;
+        j_conf["is_concluded"] = session.confrontation->is_concluded;
+        
+        j_conf["rival_explanations"] = json::array();
+        for (const auto& r : session.confrontation->rival_explanations) {
+            j_conf["rival_explanations"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
+        }
+        j_conf["epistemic_risks"] = json::array();
+        for (const auto& r : session.confrontation->epistemic_risks) {
+            j_conf["epistemic_risks"].push_back({{"text", r.text}, {"author", r.author}, {"origin", domain::ToString(r.origin)}});
+        }
+        j["confrontation"] = j_conf;
+    }
+
+    j["repositions"] = json::array();
+    for (const auto& rep : session.reposition_history) {
+        j["repositions"].push_back({
+            {"id", rep.id},
+            {"cycle", rep.cycle_version},
+            {"decision", domain::ToString(rep.decision)},
+            {"justification", rep.verdict_justification.text},
+            {"next_empirical_test", rep.next_empirical_test},
+            {"required_knowledge", rep.required_knowledge},
+            {"resumption_criteria", rep.resumption_criteria}
+        });
+    }
+
+    std::string data_str = j.dump(2);
+
+    const char* sql = R"(
+        INSERT INTO sessions (session_id, project_id, title, entrance_door, state, current_cycle, data_json, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(session_id) DO UPDATE SET
+            title = excluded.title,
+            state = excluded.state,
+            current_cycle = excluded.current_cycle,
+            data_json = excluded.data_json,
+            updated_at = CURRENT_TIMESTAMP;
+    )";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+
+    std::string door_str = std::string(domain::ToString(session.entrance_door));
+    std::string state_str = std::string(domain::ToString(session.state));
+
+    sqlite3_bind_text(stmt, 1, session.session_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, session.project_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, session.title.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, door_str.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 5, state_str.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt, 6, static_cast<int>(session.current_cycle));
+    sqlite3_bind_text(stmt, 7, data_str.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(stmt) != SQLITE_DONE) {
+        std::string err = sqlite3_errmsg(db_);
+        sqlite3_finalize(stmt);
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return std::unexpected("Falha ao salvar sessão na transação: " + err);
+    }
+    sqlite3_finalize(stmt);
+
+    // 2. Gravar Evento no Merkle-Chain
+    std::string prev_hash = GetLastEventHash(session.session_id);
+    uint64_t seq = 1;
+    const char* seq_query = "SELECT COALESCE(MAX(sequence_number), 0) + 1 FROM mprr_session_events WHERE session_id = ?;";
+    sqlite3_stmt* seq_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, seq_query, -1, &seq_stmt, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(seq_stmt, 1, session.session_id.c_str(), -1, SQLITE_STATIC);
+        if (sqlite3_step(seq_stmt) == SQLITE_ROW) {
+            seq = sqlite3_column_int64(seq_stmt, 0);
+        }
+        sqlite3_finalize(seq_stmt);
+    }
+
+    auto now = std::chrono::system_clock::now();
+    std::string ts_iso = std::format("{:%FT%TZ}", now);
+    std::string event_id = std::format("EVT-{}-{:04d}", session.session_id, seq);
+    std::string raw_chain_data = prev_hash + "|" + ts_iso + "|" + session.session_id + "|" + event_type + "|" + payload_json + "|" + author;
+    std::string cur_hash = Sha256(raw_chain_data);
+
+    const char* insert_sql = R"(
+        INSERT INTO mprr_session_events (event_id, session_id, sequence_number, previous_hash, event_type, payload_json, author, timestamp_iso, current_hash)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+    )";
+    sqlite3_stmt* insert_stmt = nullptr;
+    if (sqlite3_prepare_v2(db_, insert_sql, -1, &insert_stmt, nullptr) != SQLITE_OK) {
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return std::unexpected(sqlite3_errmsg(db_));
+    }
+
+    sqlite3_bind_text(insert_stmt, 1, event_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 2, session.session_id.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_int64(insert_stmt, 3, seq);
+    sqlite3_bind_text(insert_stmt, 4, prev_hash.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 5, event_type.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 6, payload_json.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 7, author.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 8, ts_iso.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insert_stmt, 9, cur_hash.c_str(), -1, SQLITE_STATIC);
+
+    if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
+        std::string err = sqlite3_errmsg(db_);
+        sqlite3_finalize(insert_stmt);
+        sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+        return std::unexpected("Falha ao registrar evento na transação: " + err);
+    }
+    sqlite3_finalize(insert_stmt);
+
+    // 3. Confirmar Transação
+    if (sqlite3_exec(db_, "COMMIT;", nullptr, nullptr, &err_msg) != SQLITE_OK) {
+        std::string err = err_msg ? err_msg : "Erro ao confirmar transação";
+        sqlite3_free(err_msg);
+        return std::unexpected(err);
+    }
+
+    return cur_hash;
+}
+
 std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const std::string& session_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!db_) return std::unexpected("Banco de dados não aberto");
@@ -406,12 +616,26 @@ std::expected<domain::SessionAggregate, std::string> Database::LoadSession(const
             cr.is_concluded = j["confrontation"].value("is_concluded", false);
             if (j["confrontation"].contains("rival_explanations")) {
                 for (const auto& item : j["confrontation"]["rival_explanations"]) {
-                    cr.rival_explanations.push_back(domain::ProvenancedText{.text = item.value("text", ""), .author = item.value("author", "")});
+                    cr.rival_explanations.push_back(domain::ProvenancedText{
+                        .text = item.value("text", ""),
+                        .origin = domain::ProvenanceOrigin::Human,
+                        .author = item.value("author", ""),
+                        .model_digest = "",
+                        .citation = "",
+                        .timestamp_iso = ""
+                    });
                 }
             }
             if (j["confrontation"].contains("epistemic_risks")) {
                 for (const auto& item : j["confrontation"]["epistemic_risks"]) {
-                    cr.epistemic_risks.push_back(domain::ProvenancedText{.text = item.value("text", ""), .author = item.value("author", "")});
+                    cr.epistemic_risks.push_back(domain::ProvenancedText{
+                        .text = item.value("text", ""),
+                        .origin = domain::ProvenanceOrigin::Human,
+                        .author = item.value("author", ""),
+                        .model_digest = "",
+                        .citation = "",
+                        .timestamp_iso = ""
+                    });
                 }
             }
             s.confrontation = cr;

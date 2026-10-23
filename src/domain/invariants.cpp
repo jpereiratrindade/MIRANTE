@@ -1,28 +1,21 @@
 #include "mirante/domain/invariants.hpp"
-#include <algorithm>
-#include <regex>
+#include <expected>
 
 namespace mirante::domain {
 
 std::expected<void, InvariantViolation> InvariantValidator::ValidateRelationStatus(
-    RelationStatus status, 
-    const std::string& formulation
+    RelationStatus status
 ) {
     // INV-01: Proibição de Fato Demonstrado Prematuro
-    (void)status; // Sempre nasce como Candidate
-
-    // Verifica se a formulação contém afirmações de certeza categórica
-    static const std::regex forbidden_certainty_pattern(
-        R"(\b(comprovado|demonstrado categoricamente|fato incontestável|certeza absoluta|provou-se)\b)",
-        std::regex_constants::icase
-    );
-
-    if (std::regex_search(formulation, forbidden_certainty_pattern)) {
+    // O sistema disciplina a máquina de estados no domínio, garantindo que
+    // toda relação formulada na Bancada permaneça compulsoriamente como CANDIDATA.
+    // A redação textual do pesquisador permanece livre e soberana, sem policiamento de vocabulário.
+    if (status != RelationStatus::Candidate) {
         return std::unexpected(InvariantViolation{
             .code = InvariantErrorCode::INV01_PrematureCertainty,
             .invariant_id = "INV-01",
-            .message = "A formulação da relação contém alegações de certeza fática ou comprovação terminada.",
-            .corrective_hint = "No MPRR, toda relação na Bancada nasce estritamente como CANDIDATA. Substitua termos de certeza por formulações hipotéticas ou conjecturais."
+            .message = "Tentativa de registrar relação na Bancada com estado diferente de CANDIDATA.",
+            .corrective_hint = "No protocolo MPRR, toda relação na Bancada nasce estritamente como CANDIDATA. A validação empírica ocorre fora do sistema."
         });
     }
 
