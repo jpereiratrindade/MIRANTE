@@ -665,6 +665,20 @@
           </button>
         </form>
 
+        <form id="auth-token-form" class="auth-form" novalidate>
+          <label class="auth-label" for="auth-token-input">
+            <span>Token de acesso do laboratório</span>
+            <div class="auth-input-wrap">
+              <span class="auth-icon" aria-hidden="true">⚿</span>
+              <input type="password" id="auth-token-input" placeholder="Token fornecido pelo administrador" required autocomplete="current-password">
+            </div>
+            <small class="auth-hint">Alternativa operacional quando o envio de código por e-mail não estiver configurado.</small>
+          </label>
+          <button type="submit" class="button primary full auth-submit" id="btn-token-login">
+            Entrar com token <span aria-hidden="true">→</span>
+          </button>
+        </form>
+
         <!-- Etapa 2: Validar Código de 6 dígitos -->
         <form id="auth-code-form" class="auth-form hidden" novalidate>
           <div class="auth-sent-banner">

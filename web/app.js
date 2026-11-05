@@ -50,6 +50,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const authEmailForm = document.getElementById('auth-email-form');
   const authEmailInput = document.getElementById('auth-email-input');
   const btnRequestCode = document.getElementById('btn-request-code');
+  const authTokenForm = document.getElementById('auth-token-form');
+  const authTokenInput = document.getElementById('auth-token-input');
+  const btnTokenLogin = document.getElementById('btn-token-login');
   const authCodeForm = document.getElementById('auth-code-form');
   const authTargetEmail = document.getElementById('auth-target-email');
   const authCodeInput = document.getElementById('auth-code-input');
@@ -238,6 +241,35 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         btnRequestCode.disabled = false;
         btnRequestCode.textContent = 'Enviar código por e-mail →';
+      }
+    });
+  }
+
+  if (authTokenForm) {
+    authTokenForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = authTokenInput.value.trim();
+      if (!token) {
+        setAuthFeedback('Informe o token fornecido pelo administrador.', 'error');
+        authTokenInput.focus();
+        return;
+      }
+      btnTokenLogin.disabled = true;
+      setAuthFeedback('Validando token...', 'info');
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
+          headers: {'Authorization': `Bearer ${token}`, 'X-Mirante-Token': token}
+        });
+        const data = await res.json();
+        if (!res.ok || !data.authenticated) throw new Error('Token inválido.');
+        localStorage.setItem('mirante_auth_token', token);
+        authTokenInput.value = '';
+        renderLoggedIn(data.user);
+        hideAuthOverlay();
+      } catch (err) {
+        setAuthFeedback(err.message, 'error');
+      } finally {
+        btnTokenLogin.disabled = false;
       }
     });
   }

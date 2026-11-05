@@ -21,6 +21,7 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wno-deprecated-declarations)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(CURL REQUIRED)
 
 include_directories(
   ${CMAKE_SOURCE_DIR}/include
@@ -52,6 +53,7 @@ add_executable(mirante-server
 
 target_link_libraries(mirante-server PRIVATE
   mirante_core
+  CURL::libcurl
 )
 
 # Native MCP (Model Context Protocol) Server for AI Integration

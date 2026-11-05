@@ -5,8 +5,84 @@
 #include <iostream>
 #include <format>
 #include <filesystem>
+#include <string_view>
+#include <curl/curl.h>
+#include <algorithm>
+#include <cstring>
+#include <cstdlib>
+#include <sstream>
 
 using json = nlohmann::json;
+
+namespace {
+struct SmtpPayload {
+    std::string data;
+    std::size_t offset{0};
+};
+
+std::size_t read_smtp_payload(char* buffer, std::size_t size, std::size_t count, void* userdata) {
+    auto& payload = *static_cast<SmtpPayload*>(userdata);
+    const auto capacity = size * count;
+    const auto remaining = payload.data.size() - payload.offset;
+    const auto amount = std::min(capacity, remaining);
+    if (amount > 0) {
+        std::memcpy(buffer, payload.data.data() + payload.offset, amount);
+        payload.offset += amount;
+    }
+    return amount;
+}
+
+bool send_otp_email(const std::string& recipient, const std::string& code, std::string& error) {
+    const char* host = std::getenv("MIRANTE_SMTP_HOST");
+    const char* port = std::getenv("MIRANTE_SMTP_PORT");
+    const char* user = std::getenv("MIRANTE_SMTP_USER");
+    const char* pass = std::getenv("MIRANTE_SMTP_PASS");
+    const char* from = std::getenv("MIRANTE_SMTP_FROM");
+    if (!host || !*host || !user || !*user || !pass || !*pass || !from || !*from) {
+        error = "Configuração SMTP indisponível";
+        return false;
+    }
+    if (recipient.find_first_of("\r\n") != std::string::npos) {
+        error = "Destinatário inválido";
+        return false;
+    }
+
+    const std::string smtp_port = port && *port ? port : "587";
+    const std::string url = "smtp://" + std::string(host) + ":" + smtp_port;
+    SmtpPayload payload;
+    std::ostringstream message;
+    message << "To: <" << recipient << ">\r\n"
+            << "From: \"MIRANTE SisTer\" <" << from << ">\r\n"
+            << "Subject: Codigo de acesso MIRANTE\r\n"
+            << "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+            << "Seu codigo de acesso ao MIRANTE e: " << code << "\r\n"
+            << "Validade: 10 minutos. Se voce nao solicitou este codigo, ignore esta mensagem.\r\n";
+    payload.data = message.str();
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        error = "Falha ao inicializar cliente SMTP";
+        return false;
+    }
+    curl_slist* recipients = nullptr;
+    recipients = curl_slist_append(recipients, recipient.c_str());
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_USERNAME, user);
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, pass);
+    curl_easy_setopt(curl, CURLOPT_USE_SSL, CURLUSESSL_ALL);
+    curl_easy_setopt(curl, CURLOPT_MAIL_FROM, from);
+    curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_smtp_payload);
+    curl_easy_setopt(curl, CURLOPT_READDATA, &payload);
+    curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 20L);
+    const CURLcode result = curl_easy_perform(curl);
+    if (result != CURLE_OK) error = curl_easy_strerror(result);
+    curl_slist_free_all(recipients);
+    curl_easy_cleanup(curl);
+    return result == CURLE_OK;
+}
+}
 
 namespace mirante::http {
 
@@ -166,11 +242,25 @@ void HttpServer::Start() {
                 res.set_content(json({{"error", req_res.error()}}).dump(), "application/json");
                 return;
             }
-            res.set_content(json({
+            const char* expose_dev_code = std::getenv("MIRANTE_EXPOSE_DEV_CODE");
+            const bool development_mode = expose_dev_code && std::string_view(expose_dev_code) == "true";
+            if (!development_mode) {
+                std::string smtp_error;
+                if (!send_otp_email(email, *req_res, smtp_error)) {
+                    res.status = 503;
+                    res.set_content(json({{"error", "Não foi possível entregar o código por e-mail."}}).dump(), "application/json");
+                    std::cerr << "[MIRANTE SMTP] " << smtp_error << '\n';
+                    return;
+                }
+            }
+            json payload = {
                 {"status", "ok"},
-                {"message", "Código de uso único gerado com sucesso para " + email},
-                {"dev_code", *req_res} // Disponível para uso em ambiente dev/local
-            }).dump(), "application/json");
+                {"message", "Código de uso único gerado com sucesso para " + email}
+            };
+            if (development_mode) {
+                payload["dev_code"] = *req_res;
+            }
+            res.set_content(payload.dump(), "application/json");
         } catch (const std::exception& e) {
             res.status = 400;
             res.set_content(json({{"error", e.what()}}).dump(), "application/json");
