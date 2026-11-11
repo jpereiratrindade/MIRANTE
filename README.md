@@ -166,3 +166,9 @@ O MIRANTE inclui o executável nativo `./build/mirante-mcp`, que implementa a es
 
 - **Copyright (C) 2026 José Pedro Trindade / Ecossistema SisTer**
 - Software Científico Livre — Licença GPL v3.0.
+
+## Premissas de desenvolvimento
+
+**Simples, leve. Sempre pronto. Sempre incompleto!**
+
+[Significado e símbolos das premissas](docs/sister-principles/README.md).
